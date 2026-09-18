@@ -1,7 +1,7 @@
 [versions]
-compileSdk = "36"
+compileSdk = "37"
 minSdk = "34"
-targetSdk = "36"
+targetSdk = "37"
 versionCode = "16"
 versionName = "1.4.0"
 agp = "9.1.1"
