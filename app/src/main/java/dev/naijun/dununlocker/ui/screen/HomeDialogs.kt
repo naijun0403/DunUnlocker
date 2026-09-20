@@ -30,6 +30,7 @@ internal fun AppInfoDialog(
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val githubUrl = stringResource(R.string.app_info_github_url)
+    val supportUrl = stringResource(R.string.app_info_support_url)
     val unknownVersion = stringResource(R.string.unknown_version)
     val packageInfo = remember {
         context.packageManager.getPackageInfo(context.packageName, 0)
@@ -87,40 +88,18 @@ internal fun AppInfoDialog(
                 )
 
                 // GitHub
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.small,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    onClick = {
-                        uriHandler.openUri("https://$githubUrl")
-                    }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(R.string.app_info_github),
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            Text(
-                                text = stringResource(R.string.app_info_github_url),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
+                AppInfoLink(
+                    title = stringResource(R.string.app_info_github),
+                    detail = githubUrl,
+                    onClick = { uriHandler.openUri("https://$githubUrl") }
+                )
+
+                // Support
+                AppInfoLink(
+                    title = stringResource(R.string.app_info_support),
+                    detail = stringResource(R.string.app_info_support_description),
+                    onClick = { uriHandler.openUri("https://$supportUrl") }
+                )
 
                 // License
                 InfoRow(
@@ -135,6 +114,46 @@ internal fun AppInfoDialog(
             }
         }
     )
+}
+
+@Composable
+private fun AppInfoLink(
+    title: String,
+    detail: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.primaryContainer,
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Text(
+                    text = detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
 }
 
 @Composable
