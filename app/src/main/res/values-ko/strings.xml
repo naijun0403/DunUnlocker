@@ -14,6 +14,8 @@
     <string name="app_info_developer_name">Ample (naijun0403)</string>
     <string name="app_info_github">GitHub</string>
     <string name="app_info_github_url">github.com/naijun0403/DunUnlocker</string>
+    <string name="app_info_support">개발 후원하기</string>
+    <string name="app_info_support_description">커피 한 잔으로 응원해 주세요</string>
     <string name="app_info_license">라이선스</string>
     <string name="app_info_license_type">GPL-3.0-only</string>
     <string name="app_info_close">닫기</string>

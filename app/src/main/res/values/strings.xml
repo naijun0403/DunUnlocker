@@ -14,6 +14,9 @@
     <string name="app_info_developer_name">Ample (naijun0403)</string>
     <string name="app_info_github">GitHub</string>
     <string name="app_info_github_url">github.com/naijun0403/DunUnlocker</string>
+    <string name="app_info_support">Support development</string>
+    <string name="app_info_support_description">Buy me a coffee</string>
+    <string name="app_info_support_url" translatable="false">buymeacoffee.com/naijun0403</string>
     <string name="app_info_license">License</string>
     <string name="app_info_license_type">GPL-3.0-only</string>
     <string name="app_info_close">Close</string>
