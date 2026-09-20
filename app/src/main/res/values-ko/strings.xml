@@ -9,7 +9,7 @@
     <!-- App Info Dialog -->
     <string name="app_info_title">앱 정보</string>
     <string name="app_info_version">버전</string>
-    <string name="app_info_description">DunUnlocker는 안드로이드 기기에서 테더링을 위한 DUN(Dial-Up Networking) 타입의 APN 설정을 구성할 수 있게 해주는 앱입니다.</string>
+    <string name="app_info_description">기존 APN에 테더링용 DUN 타입을 추가합니다.</string>
     <string name="app_info_developer">개발자</string>
     <string name="app_info_developer_name">Ample (naijun0403)</string>
     <string name="app_info_github">GitHub</string>
@@ -21,18 +21,18 @@
     <string name="unknown_error">알 수 없는 오류</string>
 
     <!-- Shizuku Status Card -->
-    <string name="shizuku_status_title">Shizuku 상태</string>
-    <string name="shizuku_granted_message">Shizuku 권한이 승인되었습니다. APN 설정을 진행할 수 있습니다.</string>
-    <string name="shizuku_running_message">Shizuku가 실행 중입니다. 권한을 승인해주세요.</string>
-    <string name="shizuku_not_running_message">Shizuku가 실행되지 않았습니다. Shizuku 앱을 먼저 실행해주세요.</string>
+    <string name="shizuku_status_title">Shizuku 연결</string>
+    <string name="shizuku_granted_message">Shizuku 연결됨</string>
+    <string name="shizuku_running_message">APN 설정을 읽고 변경하려면 Shizuku 접근을 허용하세요.</string>
+    <string name="shizuku_not_running_message">Shizuku를 시작한 뒤 이 화면으로 돌아오세요.</string>
     <string name="shizuku_permission_denied">Shizuku 권한이 거부되었습니다.</string>
     <string name="shizuku_permission_required">Shizuku 권한이 필요합니다.</string>
     <string name="shizuku_permission_not_running">Shizuku가 실행되지 않았습니다. Shizuku 앱을 먼저 실행해주세요.</string>
     <string name="shizuku_permission_allow_prompt">Shizuku 권한이 필요합니다. 권한을 허용해주세요.</string>
     <string name="shizuku_permission_check_error">권한 확인 중 오류가 발생했습니다: %s</string>
     <string name="shizuku_permission_request_error">권한 요청 중 오류가 발생했습니다: %s</string>
-    <string name="shizuku_request_button">Shizuku 권한 요청</string>
-    <string name="shizuku_install_button">Shizuku 설치하기</string>
+    <string name="shizuku_request_button">접근 허용</string>
+    <string name="shizuku_install_button">Shizuku 안내</string>
 
     <!-- SIM Selection Card -->
     <string name="sim_card_selection">SIM 카드 선택</string>
@@ -43,19 +43,40 @@
     <string name="sim_unknown_carrier">알 수 없음</string>
     <string name="sim_default_name">SIM %d</string>
 
-    <!-- APN Configuration Section -->
-    <string name="apn_settings_title">APN 설정</string>
-    <string name="carrier_selection">통신사 선택</string>
-    <string name="carrier_label">통신사</string>
+    <!-- Copy Existing APN -->
+    <string name="apn_mode_copy">기존 APN</string>
+    <string name="apn_mode_manual">직접 입력</string>
+    <string name="apn_source_title">사용할 APN</string>
+    <string name="apn_copy_description">기존 설정을 복사해 DUN 타입을 추가합니다. 기기에 따라 원래 APN에 병합될 수 있습니다.</string>
+    <string name="apn_source_choose">APN 선택</string>
+    <string name="apn_source_choose_count">APN %d개 · 변경</string>
+    <string name="apn_source_types">타입 · %s</string>
+    <string name="apn_current_default">기본 APN</string>
+    <string name="apn_list_refresh">APN 목록 새로고침</string>
+    <string name="apn_list_loading">APN 목록을 불러오는 중…</string>
+    <string name="apn_list_error">APN 목록을 불러오지 못했습니다. Shizuku 연결을 확인하고 다시 시도해주세요.</string>
+    <string name="apn_list_retry">다시 시도</string>
+    <string name="apn_list_empty">선택한 SIM에서 복사할 APN을 찾지 못했습니다.</string>
+    <string name="apn_source_missing">선택한 APN이 더 이상 존재하지 않습니다. 목록을 새로고침해주세요.</string>
+    <string name="apn_copy_failed">복사한 APN에 DUN이 반영되었는지 확인하지 못했습니다. 설정 앱에서 확인해주세요.</string>
+    <string name="apn_broker_timeout">APN 작업의 응답 시간이 초과되었습니다. 설정 앱에서 확인 후 다시 시도해주세요.</string>
+    <string name="copy_apn_button">DUN 추가</string>
+    <string name="copy_apn_confirm_message">“%1$s”에 DUN 타입을 추가할까요?\n\n주소: %2$s\n타입: %3$s</string>
+    <string name="copy_apn_success">선택한 APN의 DUN 지원을 확인했습니다. 설정 앱에서 확인해주세요.</string>
+
+    <!-- APN Configuration -->
+    <string name="apn_settings_title">테더링 APN</string>
+    <string name="carrier_selection">통신사 프리셋</string>
+    <string name="carrier_label">프리셋</string>
     <string name="carrier_skt_5g">SKT (5G)</string>
     <string name="carrier_skt_lte">SKT (LTE)</string>
     <string name="carrier_kt_5g">KT (5G)</string>
     <string name="carrier_kt_lte">KT (LTE)</string>
     <string name="carrier_lgu_5g">LG U+ (5G)</string>
     <string name="carrier_lgu_lte">LG U+ (LTE)</string>
-    <string name="carrier_custom">사용자 설정</string>
+    <string name="carrier_custom">직접 입력</string>
     <string name="carrier_custom_description">APN 설정을 직접 입력</string>
-    <string name="carrier_custom_notice">사용자 설정 모드에서는 모든 필드가 필수입니다. 정확한 정보를 신중하게 입력해주세요.</string>
+    <string name="carrier_custom_notice">통신사에서 제공한 APN 정보를 입력하세요.</string>
     <string name="additional_info_optional">추가 정보 (선택사항)</string>
     <string name="additional_info_required">APN 설정</string>
     <string name="basic_settings">기본 설정</string>
@@ -67,11 +88,11 @@
     <string name="apn_address_hint">통신사의 APN 서버 주소</string>
     <string name="apn_type_label">APN 타입</string>
     <string name="apn_type_placeholder">예: default,supl,mms,dun</string>
-    <string name="apn_type_hint">쉼표로 구분하여 입력 (default, supl, mms, dun 등)</string>
+    <string name="apn_type_hint">쉼표로 구분하세요. 예: default,supl,dun</string>
     <string name="mms_settings">MMS 설정</string>
     <string name="mms_settings_5g">5G: 선택사항</string>
     <string name="mms_settings_lte">LTE: 권장</string>
-    <string name="mms_settings_enable">MMS 설정 사용</string>
+    <string name="mms_settings_enable">MMS 설정 포함</string>
     <string name="mms_settings_enabled">MMS 기능이 활성화됩니다</string>
     <string name="mms_settings_disabled">MMS 기능이 비활성화됩니다</string>
     <string name="mmsc_label">MMSC</string>
@@ -101,7 +122,7 @@
     <string name="roaming_protocol_label">로밍 프로토콜</string>
     <string name="roaming_protocol_hint">로밍 시 사용할 IP 프로토콜 버전</string>
 
-    <!-- Auth Type String Constants for internal use -->
+    <!-- Authentication Options -->
     <string name="auth_type_value_none">없음</string>
     <string name="auth_type_value_pap">PAP</string>
     <string name="auth_type_value_chap">CHAP</string>
@@ -119,17 +140,17 @@
     <string name="validation_error_mms_port">MMS 포트</string>
 
     <!-- APN Apply Confirmation Dialog -->
-    <string name="confirm_dialog_title">APN 설정 적용</string>
-    <string name="confirm_dialog_message">%s 통신사의 APN 설정을 적용하시겠습니까?</string>
-    <string name="confirm_dialog_message_custom">사용자 설정 APN을 적용하시겠습니까?</string>
+    <string name="confirm_dialog_title">APN을 적용할까요?</string>
+    <string name="confirm_dialog_message">%s 프리셋으로 APN을 설정합니다.</string>
+    <string name="confirm_dialog_message_custom">입력한 정보로 APN을 설정합니다.</string>
     <string name="confirm_dialog_target_sim">적용 대상 SIM</string>
     <string name="confirm_dialog_important_notice">중요 안내</string>
-    <string name="confirm_dialog_notice_content">• APN 설정이 백그라운드에서 적용됩니다\n• 설정 앱에서 APN을 확인해주세요\n• 설정 > 네트워크 및 인터넷 > 모바일 네트워크에서 APN을 확인할 수 있습니다</string>
+    <string name="confirm_dialog_notice_content">기기에 따라 기존 APN이 변경될 수 있습니다. 적용 후 시스템 설정에서 확인하세요.</string>
     <string name="confirm_button">적용</string>
     <string name="cancel_button">취소</string>
 
     <!-- Loading Dialog -->
-    <string name="loading_dialog_title">APN 설정 적용 중...</string>
+    <string name="loading_dialog_title">APN 적용 중…</string>
     <string name="loading_dialog_subtitle">잠시만 기다려주세요</string>
 
     <!-- Success and Error Messages -->
@@ -137,4 +158,16 @@
     <string name="apn_apply_failure">APN 설정 실패: %s</string>
     <string name="carrier_not_supported">지원하지 않는 통신사입니다.</string>
     <string name="error_occurred">오류 발생: %s</string>
+    <string name="sim_slot_format">SIM %1$d · %2$s</string>
+    <!-- Named APN Copy -->
+    <string name="apn_named_copy_button">다른 이름으로 복사</string>
+    <string name="apn_named_copy_confirm">복사</string>
+    <string name="apn_copy_name_label">새 APN 이름</string>
+    <string name="apn_copy_name_default">%s (DUN)</string>
+    <string name="apn_copy_name_error">원본과 다른 이름을 입력하세요.</string>
+    <string name="apn_named_copy_description">선택한 설정에 DUN을 추가해 별도 APN으로 저장합니다. 기본 APN은 유지됩니다.</string>
+    <string name="apn_named_copy_success">새 APN을 만들었습니다. 사용할 APN은 시스템 설정에서 선택하세요.</string>
+    <string name="apn_named_copy_unsupported">이 APN의 프로필은 원본을 유지한 별도 복사를 지원하지 않습니다.</string>
+    <string name="apn_named_copy_exists">통신사와 APN 설정이 같은 별도 프로필이 이미 있습니다. 기존 항목을 확인하세요.</string>
+    <string name="apn_named_copy_unverified">별도 APN이 정상적으로 만들어졌는지 확인하지 못했습니다. 다시 시도하기 전에 시스템 설정에서 원본과 복사본을 확인하세요.</string>
 </resources>

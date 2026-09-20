@@ -9,7 +9,7 @@
     <!-- App Info Dialog -->
     <string name="app_info_title">App Information</string>
     <string name="app_info_version">Version</string>
-    <string name="app_info_description">DunUnlocker allows you to configure APN settings with DUN (Dial-Up Networking) type for tethering on Android devices.</string>
+    <string name="app_info_description">Add the DUN type to an existing APN for tethering.</string>
     <string name="app_info_developer">Developer</string>
     <string name="app_info_developer_name">Ample (naijun0403)</string>
     <string name="app_info_github">GitHub</string>
@@ -21,18 +21,18 @@
     <string name="unknown_error">Unknown error</string>
 
     <!-- Shizuku Status Card -->
-    <string name="shizuku_status_title">Shizuku Status</string>
-    <string name="shizuku_granted_message">Shizuku permission granted. You can proceed with APN settings.</string>
-    <string name="shizuku_running_message">Shizuku is running. Please grant permission.</string>
-    <string name="shizuku_not_running_message">Shizuku is not running. Please run the Shizuku app first.</string>
+    <string name="shizuku_status_title">Connect to Shizuku</string>
+    <string name="shizuku_granted_message">Shizuku connected</string>
+    <string name="shizuku_running_message">Allow Shizuku access to read and change APN settings.</string>
+    <string name="shizuku_not_running_message">Start Shizuku, then return to this screen.</string>
     <string name="shizuku_permission_denied">Shizuku permission denied.</string>
     <string name="shizuku_permission_required">Shizuku permission is required.</string>
     <string name="shizuku_permission_not_running">Shizuku is not running. Please run the Shizuku app first.</string>
     <string name="shizuku_permission_allow_prompt">Shizuku permission is required. Please allow permission.</string>
     <string name="shizuku_permission_check_error">An error occurred while checking permission: %s</string>
     <string name="shizuku_permission_request_error">An error occurred while requesting permission: %s</string>
-    <string name="shizuku_request_button">Request Shizuku Permission</string>
-    <string name="shizuku_install_button">Install Shizuku</string>
+    <string name="shizuku_request_button">Allow access</string>
+    <string name="shizuku_install_button">Shizuku setup</string>
 
     <!-- SIM Selection Card -->
     <string name="sim_card_selection">SIM Card Selection</string>
@@ -43,10 +43,31 @@
     <string name="sim_unknown_carrier">Unknown</string>
     <string name="sim_default_name">SIM %d</string>
 
-    <!-- APN Configuration Section -->
-    <string name="apn_settings_title">APN Settings</string>
-    <string name="carrier_selection">Carrier Selection</string>
-    <string name="carrier_label">Carrier</string>
+    <!-- Copy Existing APN -->
+    <string name="apn_mode_copy">Existing APN</string>
+    <string name="apn_mode_manual">Manual</string>
+    <string name="apn_source_title">APN to use</string>
+    <string name="apn_copy_description">Copy the existing settings and add DUN. Your device may merge the copy into the original APN.</string>
+    <string name="apn_source_choose">Choose an APN</string>
+    <string name="apn_source_choose_count">%d APNs · Change</string>
+    <string name="apn_source_types">Types · %s</string>
+    <string name="apn_current_default">Default APN</string>
+    <string name="apn_list_refresh">Refresh APN list</string>
+    <string name="apn_list_loading">Loading APNs…</string>
+    <string name="apn_list_error">Could not load APNs. Check the Shizuku connection and try again.</string>
+    <string name="apn_list_retry">Retry</string>
+    <string name="apn_list_empty">No APNs were found for the selected SIM.</string>
+    <string name="apn_source_missing">The selected APN is no longer available. Refresh the list.</string>
+    <string name="apn_copy_failed">Could not verify the copied APN. Please check the Settings app.</string>
+    <string name="apn_broker_timeout">The APN operation timed out. Check the Settings app before trying again.</string>
+    <string name="copy_apn_button">Add DUN</string>
+    <string name="copy_apn_confirm_message">Add DUN to “%1$s”?\n\nAPN: %2$s\nTypes: %3$s</string>
+    <string name="copy_apn_success">DUN support is available on the selected APN. Please check the Settings app.</string>
+
+    <!-- APN Configuration -->
+    <string name="apn_settings_title">Tethering APN</string>
+    <string name="carrier_selection">Carrier preset</string>
+    <string name="carrier_label">Preset</string>
     <string name="carrier_skt_5g">SKT (5G)</string>
     <string name="carrier_skt_lte">SKT (LTE)</string>
     <string name="carrier_kt_5g">KT (5G)</string>
@@ -55,7 +76,7 @@
     <string name="carrier_lgu_lte">LG U+ (LTE)</string>
     <string name="carrier_custom">Custom</string>
     <string name="carrier_custom_description">Manually configure APN settings</string>
-    <string name="carrier_custom_notice">All fields are required for Custom carrier configuration. Please fill in all the information carefully.</string>
+    <string name="carrier_custom_notice">Enter the APN details provided by your carrier.</string>
     <string name="additional_info_optional">Additional Info (Optional)</string>
     <string name="additional_info_required">APN Configuration</string>
     <string name="basic_settings">Basic Settings</string>
@@ -67,11 +88,11 @@
     <string name="apn_address_hint">Carrier APN server address</string>
     <string name="apn_type_label">APN Type</string>
     <string name="apn_type_placeholder">e.g., default,supl,mms,dun</string>
-    <string name="apn_type_hint">Enter with commas (default, supl, mms, dun, etc.)</string>
+    <string name="apn_type_hint">Separate with commas, e.g. default,supl,dun</string>
     <string name="mms_settings">MMS Settings</string>
     <string name="mms_settings_5g">5G: Optional</string>
     <string name="mms_settings_lte">LTE: Recommended</string>
-    <string name="mms_settings_enable">Use MMS Settings</string>
+    <string name="mms_settings_enable">Include MMS settings</string>
     <string name="mms_settings_enabled">MMS feature is enabled</string>
     <string name="mms_settings_disabled">MMS feature is disabled</string>
     <string name="mmsc_label">MMSC</string>
@@ -101,7 +122,7 @@
     <string name="roaming_protocol_label">Roaming Protocol</string>
     <string name="roaming_protocol_hint">IP protocol version when roaming</string>
 
-    <!-- Auth Type String Constants for internal use -->
+    <!-- Authentication Options -->
     <string name="auth_type_value_none">None</string>
     <string name="auth_type_value_pap">PAP</string>
     <string name="auth_type_value_chap">CHAP</string>
@@ -119,17 +140,17 @@
     <string name="validation_error_mms_port">MMS Port</string>
 
     <!-- APN Apply Confirmation Dialog -->
-    <string name="confirm_dialog_title">Apply APN Settings</string>
-    <string name="confirm_dialog_message">Do you want to apply APN settings for %s carrier?</string>
-    <string name="confirm_dialog_message_custom">Do you want to apply custom APN settings?</string>
+    <string name="confirm_dialog_title">Apply APN?</string>
+    <string name="confirm_dialog_message">Set up an APN using the %s preset.</string>
+    <string name="confirm_dialog_message_custom">Set up an APN using the details you entered.</string>
     <string name="confirm_dialog_target_sim">Target SIM</string>
     <string name="confirm_dialog_important_notice">Important Notice</string>
-    <string name="confirm_dialog_notice_content">• APN settings will be applied in the background\n• Please verify the APN in the Settings app\n• You can verify the APN at Settings > Network and Internet > Mobile Network</string>
+    <string name="confirm_dialog_notice_content">Your device may update the existing APN. Check it in system Settings after applying.</string>
     <string name="confirm_button">Apply</string>
     <string name="cancel_button">Cancel</string>
 
     <!-- Loading Dialog -->
-    <string name="loading_dialog_title">Applying APN Settings...</string>
+    <string name="loading_dialog_title">Applying APN…</string>
     <string name="loading_dialog_subtitle">Please wait a moment</string>
 
     <!-- Success and Error Messages -->
@@ -137,4 +158,16 @@
     <string name="apn_apply_failure">Failed to apply APN settings: %s</string>
     <string name="carrier_not_supported">Unsupported carrier.</string>
     <string name="error_occurred">An error occurred: %s</string>
+    <string name="sim_slot_format">SIM %1$d · %2$s</string>
+    <!-- Named APN Copy -->
+    <string name="apn_named_copy_button">Copy with a new name</string>
+    <string name="apn_named_copy_confirm">Copy</string>
+    <string name="apn_copy_name_label">New APN name</string>
+    <string name="apn_copy_name_default">%s (DUN)</string>
+    <string name="apn_copy_name_error">Enter a name different from the original.</string>
+    <string name="apn_named_copy_description">Add DUN to these settings and save a separate APN. Your default APN stays the same.</string>
+    <string name="apn_named_copy_success">New APN created. Select the APN to use in system Settings.</string>
+    <string name="apn_named_copy_unsupported">This APN profile does not support making a separate copy while preserving the original.</string>
+    <string name="apn_named_copy_exists">A separate profile with the same carrier and APN settings already exists. Check the existing entries.</string>
+    <string name="apn_named_copy_unverified">Could not verify the separate APN. Check the original and the copy in system Settings before trying again.</string>
 </resources>
