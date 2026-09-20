@@ -1,6 +1,12 @@
 package dev.naijun.dununlocker.ui.components
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.runtime.saveable.rememberSaveable
+import dev.naijun.dununlocker.data.ApnSummary
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.automirrored.filled.Label
@@ -28,6 +34,10 @@ private data class CarrierOption(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ApnConfigSection(
+    subscriptionId: Int?,
+    refreshKey: Int,
+    loadApns: suspend (Int) -> Result<List<ApnSummary>>,
+    onCopyApnClicked: (ApnSummary) -> Unit,
     onApplyClicked: (
         carrier: String,
         apnName: String,
@@ -45,6 +55,10 @@ fun ApnConfigSection(
     ) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var selectedCopyId by rememberSaveable(subscriptionId) { mutableStateOf<Long?>(null) }
+    var copyMode by rememberSaveable { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+    val modeAnchor = remember { BringIntoViewRequester() }
     var selectedCarrier by remember { mutableStateOf("") }
     var expandedCarrier by remember { mutableStateOf(false) }
     var apnName by remember { mutableStateOf("") }
@@ -145,107 +159,147 @@ fun ApnConfigSection(
             )
         }
 
-        // 통신사 선택 카드
-        CarrierSelectionCard(
-            selectedCarrier = selectedCarrierLabel,
-            expanded = expandedCarrier,
-            carriers = carriers,
-            onExpandedChange = { expandedCarrier = it },
-            onCarrierSelected = {
-                selectedCarrier = it
-                expandedCarrier = false
-            }
-        )
-
-        // 추가 정보 입력
-        AnimatedVisibility(
-            visible = selectedCarrier.isNotEmpty(),
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
+        SingleChoiceSegmentedButtonRow(
+            modifier = Modifier.fillMaxWidth().bringIntoViewRequester(modeAnchor)
         ) {
-            AdditionalInfoCard(
-                apnName = apnName,
-                apnAddress = apnAddress,
-                apnType = apnType,
-                useMmsSettings = useMmsSettings,
-                mmsc = mmsc,
-                mmsProxy = mmsProxy,
-                mmsPort = mmsPort,
-                mcc = mcc,
-                mnc = mnc,
-                authType = authType,
-                expandedAuthType = expandedAuthType,
-                authTypes = authTypes,
-                protocol = protocol,
-                expandedProtocol = expandedProtocol,
-                protocolOptions = protocolOptions,
-                roamingProtocol = roamingProtocol,
-                expandedRoamingProtocol = expandedRoamingProtocol,
-                onApnNameChange = { apnName = it },
-                onApnAddressChange = { apnAddress = it },
-                onApnTypeChange = { apnType = it },
-                onUseMmsSettingsChange = { useMmsSettings = it },
-                onMmscChange = { mmsc = it },
-                onMmsProxyChange = { mmsProxy = it },
-                onMmsPortChange = { if (it.all { char -> char.isDigit() }) mmsPort = it },
-                onMccChange = { if (it.length <= 3 && it.all { char -> char.isDigit() }) mcc = it },
-                onMncChange = { if (it.length <= 3 && it.all { char -> char.isDigit() }) mnc = it },
-                onAuthTypeExpandedChange = { expandedAuthType = it },
-                onAuthTypeSelected = {
-                    authType = it
-                    expandedAuthType = false
-                },
-                onProtocolExpandedChange = { expandedProtocol = it },
-                onProtocolSelected = {
-                    protocol = it
-                    expandedProtocol = false
-                },
-                onRoamingProtocolExpandedChange = { expandedRoamingProtocol = it },
-                onRoamingProtocolSelected = {
-                    roamingProtocol = it
-                    expandedRoamingProtocol = false
-                },
-                selectedCarrier = selectedCarrier
-            )
+            listOf(R.string.apn_mode_copy, R.string.apn_mode_manual).forEachIndexed { index, label ->
+                SegmentedButton(
+                    selected = copyMode == (index == 0),
+                    onClick = {
+                        scope.launch {
+                            modeAnchor.bringIntoView()
+                            copyMode = index == 0
+                        }
+                    },
+                    shape = SegmentedButtonDefaults.itemShape(index, 2)
+                ) { Text(stringResource(label)) }
+            }
         }
 
-        // 적용 버튼
-        AnimatedVisibility(
-            visible = selectedCarrier.isNotEmpty(),
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
-        ) {
-            Button(
-                onClick = {
-                    onApplyClicked(
-                        selectedCarrier, apnName, apnAddress, apnType,
-                        mmsc, mmsProxy, mmsPort, mcc, mnc, authType,
-                        protocol, roamingProtocol, useMmsSettings
+        // Animate the whole panel (including spacing and its action) as one layout.
+        AnimatedContent(
+            targetState = copyMode,
+            transitionSpec = {
+                (fadeIn(tween(180, 90)) togetherWith fadeOut(tween(120)))
+                    .using(SizeTransform { _, _ -> tween(300) })
+            },
+            contentAlignment = androidx.compose.ui.Alignment.TopStart,
+            label = "apnConfigurationMode",
+            modifier = Modifier.fillMaxWidth()
+        ) { copying ->
+            if (copying) {
+                ExistingApnCard(
+                    subscriptionId = subscriptionId,
+                    refreshKey = refreshKey,
+                    selectedId = selectedCopyId,
+                    onSelected = { selectedCopyId = it },
+                    loadApns = loadApns,
+                    onCopy = onCopyApnClicked
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                    CarrierSelectionCard(
+                        selectedCarrier = selectedCarrierLabel,
+                        expanded = expandedCarrier,
+                        carriers = carriers,
+                        onExpandedChange = { expandedCarrier = it },
+                        onCarrierSelected = {
+                            selectedCarrier = it
+                            expandedCarrier = false
+                        }
                     )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ),
-                elevation = ButtonDefaults.buttonElevation(
-                    defaultElevation = 3.dp,
-                    pressedElevation = 6.dp
-                )
-            ) {
-                Icon(
-                    Icons.Filled.Check,
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = stringResource(R.string.apply_button),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
+
+                    AnimatedVisibility(
+                        visible = selectedCarrier.isNotEmpty(),
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        AdditionalInfoCard(
+                            apnName = apnName,
+                            apnAddress = apnAddress,
+                            apnType = apnType,
+                            useMmsSettings = useMmsSettings,
+                            mmsc = mmsc,
+                            mmsProxy = mmsProxy,
+                            mmsPort = mmsPort,
+                            mcc = mcc,
+                            mnc = mnc,
+                            authType = authType,
+                            expandedAuthType = expandedAuthType,
+                            authTypes = authTypes,
+                            protocol = protocol,
+                            expandedProtocol = expandedProtocol,
+                            protocolOptions = protocolOptions,
+                            roamingProtocol = roamingProtocol,
+                            expandedRoamingProtocol = expandedRoamingProtocol,
+                            onApnNameChange = { apnName = it },
+                            onApnAddressChange = { apnAddress = it },
+                            onApnTypeChange = { apnType = it },
+                            onUseMmsSettingsChange = { useMmsSettings = it },
+                            onMmscChange = { mmsc = it },
+                            onMmsProxyChange = { mmsProxy = it },
+                            onMmsPortChange = { if (it.all { char -> char.isDigit() }) mmsPort = it },
+                            onMccChange = { if (it.length <= 3 && it.all { char -> char.isDigit() }) mcc = it },
+                            onMncChange = { if (it.length <= 3 && it.all { char -> char.isDigit() }) mnc = it },
+                            onAuthTypeExpandedChange = { expandedAuthType = it },
+                            onAuthTypeSelected = {
+                                authType = it
+                                expandedAuthType = false
+                            },
+                            onProtocolExpandedChange = { expandedProtocol = it },
+                            onProtocolSelected = {
+                                protocol = it
+                                expandedProtocol = false
+                            },
+                            onRoamingProtocolExpandedChange = { expandedRoamingProtocol = it },
+                            onRoamingProtocolSelected = {
+                                roamingProtocol = it
+                                expandedRoamingProtocol = false
+                            },
+                            selectedCarrier = selectedCarrier
+                        )
+                    }
+
+                    // 적용 버튼
+                    AnimatedVisibility(
+                        visible = selectedCarrier.isNotEmpty(),
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        Button(
+                            onClick = {
+                                onApplyClicked(
+                                    selectedCarrier, apnName, apnAddress, apnType,
+                                    mmsc, mmsProxy, mmsPort, mcc, mnc, authType,
+                                    protocol, roamingProtocol, useMmsSettings
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            elevation = ButtonDefaults.buttonElevation(
+                                defaultElevation = 3.dp,
+                                pressedElevation = 6.dp
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = stringResource(R.string.apply_button),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
             }
         }
     }

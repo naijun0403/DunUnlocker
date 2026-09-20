@@ -13,11 +13,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import dev.naijun.dununlocker.R
+import dev.naijun.dununlocker.data.ApnSummary
+import kotlinx.coroutines.CancellationException
 import dev.naijun.dununlocker.data.ApnManager
 import dev.naijun.dununlocker.data.ShizukuManager
 import dev.naijun.dununlocker.data.SimInfo
@@ -31,6 +34,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun HomeScreen() {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val apnManager = remember { ApnManager(context) }
     val scope = rememberCoroutineScope()
 
@@ -44,6 +48,7 @@ fun HomeScreen() {
     val validationErrorRequiredFields = stringResource(R.string.validation_error_required_fields)
     val carrierNotSupported = stringResource(R.string.carrier_not_supported)
     val apnApplySuccess = stringResource(R.string.apn_apply_success)
+    val copyApnSuccess = stringResource(R.string.copy_apn_success)
     val apnApplyFailure = stringResource(R.string.apn_apply_failure)
     val errorOccurred = stringResource(R.string.error_occurred)
     val unknownError = stringResource(R.string.unknown_error)
@@ -54,7 +59,8 @@ fun HomeScreen() {
 
     val snackbarHostState = remember { SnackbarHostState() }
     var isLoading by remember { mutableStateOf(false) }
-    var pendingApnData by remember { mutableStateOf<PendingApnData?>(null) }
+    var apnRefreshKey by remember { mutableIntStateOf(0) }
+    var pendingApnRequest by remember { mutableStateOf<PendingApnRequest?>(null) }
 
     var simList by remember { mutableStateOf<List<SimInfo>>(emptyList()) }
     var selectedSim by remember { mutableStateOf<SimInfo?>(null) }
@@ -76,7 +82,7 @@ fun HomeScreen() {
     LaunchedEffect(shizukuErrorMessage) {
         shizukuErrorMessage?.let {
             snackbarHostState.showSnackbar(
-                message = context.getString(it.resId, *it.args.toTypedArray()),
+                message = resources.getString(it.resId, *it.args.toTypedArray()),
                 duration = SnackbarDuration.Short
             )
             ShizukuManager.clearError()
@@ -152,6 +158,14 @@ fun HomeScreen() {
                             exit = fadeOut() + shrinkVertically()
                         ) {
                             ApnConfigSection(
+                                subscriptionId = selectedSim?.subscriptionId,
+                                refreshKey = apnRefreshKey,
+                                loadApns = apnManager::getApns,
+                                onCopyApnClicked = { apn ->
+                                    selectedSim?.let { sim ->
+                                        pendingApnRequest = PendingApnRequest.Copy(apn, sim)
+                                    }
+                                },
                                 onApplyClicked = { carrier, apnName, apnAddress, apnType, mmsc, mmsProxy, mmsPort, mcc, mnc, authType, protocol, roamingProtocol, useMmsSettings ->
                                     val validationErrors = mutableListOf<String>()
 
@@ -176,12 +190,14 @@ fun HomeScreen() {
                                         return@ApnConfigSection
                                     }
 
-                                    pendingApnData = PendingApnData(
-                                        carrier, apnName, apnAddress, apnType,
-                                        mmsc, mmsProxy, mmsPort,
-                                        mcc, mnc, authType,
-                                        protocol, roamingProtocol,
-                                        useMmsSettings
+                                    pendingApnRequest = PendingApnRequest.Configure(
+                                        PendingApnData(
+                                            carrier, apnName, apnAddress, apnType,
+                                            mmsc, mmsProxy, mmsPort,
+                                            mcc, mnc, authType,
+                                            protocol, roamingProtocol,
+                                            useMmsSettings
+                                        )
                                     )
                                 }
                             )
@@ -236,51 +252,68 @@ fun HomeScreen() {
         }
     }
 
-    pendingApnData?.let { data ->
+    pendingApnRequest?.let { request ->
         ApnApplyConfirmDialog(
-            data = data,
-            selectedSim = selectedSim,
+            request = request,
+            selectedSim = (request as? PendingApnRequest.Copy)?.sim ?: selectedSim,
             onConfirm = {
-                pendingApnData = null  // Dialog를 먼저 닫음
+                pendingApnRequest = null  // Dialog를 먼저 닫음
                 scope.launch {
                     isLoading = true
                     try {
-                        val carrierType = CarrierType.fromString(data.carrier)
-                        if (carrierType == null) {
-                            isLoading = false
-                            snackbarHostState.showSnackbar(
-                                message = carrierNotSupported,
-                                duration = SnackbarDuration.Short
-                            )
-                            return@launch
+                        val result = when (request) {
+                            is PendingApnRequest.Copy -> {
+                                apnManager.copyApnWithDun(
+                                    subscriptionId = request.sim.subscriptionId,
+                                    sourceApnId = request.apn.id
+                                )
+                            }
+
+                            is PendingApnRequest.Configure -> {
+                                val data = request.data
+                                val carrierType = CarrierType.fromString(data.carrier)
+                                if (carrierType == null) {
+                                    isLoading = false
+                                    snackbarHostState.showSnackbar(
+                                        message = carrierNotSupported,
+                                        duration = SnackbarDuration.Short
+                                    )
+                                    return@launch
+                                }
+
+                                val customApn = apnManager.createCustomApnContent(
+                                    carrierType = carrierType,
+                                    name = data.apnName,
+                                    apnAddress = data.apnAddress,
+                                    apnType = data.apnType,
+                                    mmsc = data.mmsc,
+                                    mmsProxy = data.mmsProxy,
+                                    mmsPort = data.mmsPort,
+                                    mcc = data.mcc,
+                                    mnc = data.mnc,
+                                    authType = data.authType,
+                                    protocol = data.protocol,
+                                    roamingProtocol = data.roamingProtocol,
+                                    useMmsSettings = data.useMmsSettings
+                                )
+
+                                apnManager.applyApnConfig(
+                                    carrierType = carrierType,
+                                    customApnContent = customApn,
+                                    subscriptionId = selectedSim?.subscriptionId
+                                )
+                            }
                         }
 
-                        val customApn = apnManager.createCustomApnContent(
-                            carrierType = carrierType,
-                            name = data.apnName,
-                            apnAddress = data.apnAddress,
-                            apnType = data.apnType,
-                            mmsc = data.mmsc,
-                            mmsProxy = data.mmsProxy,
-                            mmsPort = data.mmsPort,
-                            mcc = data.mcc,
-                            mnc = data.mnc,
-                            authType = data.authType,
-                            protocol = data.protocol,
-                            roamingProtocol = data.roamingProtocol,
-                            useMmsSettings = data.useMmsSettings
-                        )
-
-                        val result = apnManager.applyApnConfig(
-                            carrierType = carrierType,
-                            customApnContent = customApn,
-                            subscriptionId = selectedSim?.subscriptionId
-                        )
-
                         result.onSuccess {
+                            apnRefreshKey++
                             isLoading = false
                             snackbarHostState.showSnackbar(
-                                message = apnApplySuccess,
+                                message = if (request is PendingApnRequest.Copy) {
+                                    copyApnSuccess
+                                } else {
+                                    apnApplySuccess
+                                },
                                 duration = SnackbarDuration.Long
                             )
                         }.onFailure { error ->
@@ -290,6 +323,9 @@ fun HomeScreen() {
                                 duration = SnackbarDuration.Long
                             )
                         }
+                    } catch (e: CancellationException) {
+                        isLoading = false
+                        throw e
                     } catch (e: Exception) {
                         isLoading = false
                         snackbarHostState.showSnackbar(
@@ -300,7 +336,7 @@ fun HomeScreen() {
                 }
             },
             onDismiss = {
-                pendingApnData = null
+                pendingApnRequest = null
             }
         )
     }
@@ -318,6 +354,7 @@ private fun AppInfoDialog(
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
+    val githubUrl = stringResource(R.string.app_info_github_url)
     val unknownVersion = stringResource(R.string.unknown_version)
     val packageInfo = remember {
         context.packageManager.getPackageInfo(context.packageName, 0)
@@ -380,7 +417,7 @@ private fun AppInfoDialog(
                     shape = MaterialTheme.shapes.small,
                     color = MaterialTheme.colorScheme.primaryContainer,
                     onClick = {
-                        uriHandler.openUri("https://${context.getString(R.string.app_info_github_url)}")
+                        uriHandler.openUri("https://$githubUrl")
                     }
                 ) {
                     Row(
@@ -450,7 +487,7 @@ private fun InfoRow(
 
 @Composable
 private fun ApnApplyConfirmDialog(
-    data: PendingApnData,
+    request: PendingApnRequest,
     selectedSim: SimInfo?,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
@@ -475,10 +512,23 @@ private fun ApnApplyConfirmDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = if (CarrierType.fromString(data.carrier) == CarrierType.CUSTOM) {
-                        stringResource(R.string.confirm_dialog_message_custom)
-                    } else {
-                        stringResource(R.string.confirm_dialog_message, data.carrier)
+                    text = when (request) {
+                        is PendingApnRequest.Copy -> {
+                            stringResource(
+                                R.string.copy_apn_confirm_message,
+                                request.apn.name.ifBlank { request.apn.apn },
+                                request.apn.apn,
+                                request.apn.type.ifBlank { "*" }
+                            )
+                        }
+
+                        is PendingApnRequest.Configure -> {
+                            if (CarrierType.fromString(request.data.carrier) == CarrierType.CUSTOM) {
+                                stringResource(R.string.confirm_dialog_message_custom)
+                            } else {
+                                stringResource(R.string.confirm_dialog_message, request.data.carrier)
+                            }
+                        }
                     },
                     style = MaterialTheme.typography.bodyLarge
                 )
@@ -562,6 +612,11 @@ private fun ApnApplyConfirmDialog(
             }
         }
     )
+}
+
+private sealed interface PendingApnRequest {
+    data class Copy(val apn: ApnSummary, val sim: SimInfo) : PendingApnRequest
+    data class Configure(val data: PendingApnData) : PendingApnRequest
 }
 
 private data class PendingApnData(

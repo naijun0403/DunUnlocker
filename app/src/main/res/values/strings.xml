@@ -43,6 +43,27 @@
     <string name="sim_unknown_carrier">Unknown</string>
     <string name="sim_default_name">SIM %d</string>
 
+    <!-- Copy existing APN -->
+    <string name="apn_mode_copy">Copy existing APN</string>
+    <string name="apn_mode_manual">Manual setup</string>
+    <string name="apn_source_title">Source APN</string>
+    <string name="apn_copy_description">Choose an APN from the selected SIM and add dun to its existing types. Android may merge the copy into the original APN.</string>
+    <string name="apn_source_choose">Choose an APN to copy</string>
+    <string name="apn_source_choose_count">Choose from %d APNs</string>
+    <string name="apn_source_types">Types: %s</string>
+    <string name="apn_current_default">Current default APN</string>
+    <string name="apn_list_refresh">Refresh APN list</string>
+    <string name="apn_list_loading">Loading APNs…</string>
+    <string name="apn_list_error">Could not load APNs. Check the Shizuku connection and try again.</string>
+    <string name="apn_list_retry">Retry</string>
+    <string name="apn_list_empty">No APNs were found for the selected SIM.</string>
+    <string name="apn_source_missing">The selected APN is no longer available. Refresh the list.</string>
+    <string name="apn_copy_failed">Could not verify the copied APN. Please check the Settings app.</string>
+    <string name="apn_broker_timeout">The APN operation timed out. Check the Settings app before trying again.</string>
+    <string name="copy_apn_button">Copy APN and add DUN</string>
+    <string name="copy_apn_confirm_message">Copy “%1$s” and add dun to its types?\n\nAPN: %2$s\nCurrent types: %3$s</string>
+    <string name="copy_apn_success">DUN support is available on the selected APN. Please check the Settings app.</string>
+
     <!-- APN Configuration Section -->
     <string name="apn_settings_title">APN Settings</string>
     <string name="carrier_selection">Carrier Selection</string>
