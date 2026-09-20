@@ -147,15 +147,23 @@ class ApnManager(
         }
     }
 
-    suspend fun copyApnWithDun(
+    suspend fun addDunToApn(subscriptionId: Int, sourceApnId: Long): Result<Unit> =
+        copyApnWithDun(subscriptionId, sourceApnId, copyName = null)
+
+    suspend fun createNamedApnCopy(subscriptionId: Int, sourceApnId: Long, name: String): Result<Unit> =
+        copyApnWithDun(subscriptionId, sourceApnId, copyName = name)
+
+    private suspend fun copyApnWithDun(
         subscriptionId: Int,
-        sourceApnId: Long
+        sourceApnId: Long,
+        copyName: String?
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             overrideConfigUsingBroker(Bundle().apply {
                 putString("operation", "copy_apn")
                 putInt("sub_id", subscriptionId)
                 putLong("source_apn_id", sourceApnId)
+                copyName?.let { putString("copy_name", it) }
             })
             Result.success(Unit)
         } catch (e: CancellationException) {
@@ -166,44 +174,7 @@ class ApnManager(
         }
     }
 
-    fun createCustomApnContent(
-        carrierType: CarrierType,
-        name: String,
-        apnAddress: String,
-        apnType: String,
-        mmsc: String,
-        mmsProxy: String,
-        mmsPort: String,
-        mcc: String,
-        mnc: String,
-        authType: String,
-        protocol: String,
-        roamingProtocol: String,
-        useMmsSettings: Boolean
-    ): ApnContent {
-        val defaultConfig = ApnContent.getDefaultConfig(carrierType)
-
-        return ApnContent(
-            name = name,
-            numeric = "$mcc$mnc",
-            mcc = mcc,
-            mnc = mnc,
-            apn = apnAddress,
-            type = apnType,
-            protocol = protocol,
-            mmsc = if (useMmsSettings) mmsc else "",
-            mmsProxy = if (useMmsSettings) mmsProxy else "",
-            mmsPort = if (useMmsSettings) mmsPort else "",
-            roamingProtocol = roamingProtocol,
-            server = defaultConfig.server,
-            authType = ApnContent.getAuthTypeCode(authType),
-            user = defaultConfig.user,
-            password = defaultConfig.password
-        )
-    }
-
     private suspend fun overrideConfigUsingBroker(bundle: Bundle): Bundle = brokerMutex.withLock {
-        // Keep broker operations serialized until their callback, even if a screen leaves.
         withContext(NonCancellable) {
             withTimeoutOrNull(10_000.milliseconds) {
                 val am = IActivityManager.Stub.asInterface(

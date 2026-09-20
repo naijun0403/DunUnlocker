@@ -13,7 +13,7 @@ enum class CarrierType(val displayName: String) {
         return when (this) {
             SKT_5G, KT_5G, LGU_PLUS_5G -> false
             SKT_LTE, KT_LTE, LGU_PLUS_LTE -> true
-            CUSTOM -> false // Custom은 사용자가 선택
+            CUSTOM -> false
         }
     }
 
