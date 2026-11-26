@@ -66,7 +66,8 @@
     <string name="apn_source_missing">선택한 APN이 더 이상 존재하지 않습니다. 목록을 새로고침해주세요.</string>
     <string name="apn_copy_failed">복사한 APN에 DUN이 반영되었는지 확인하지 못했습니다. 설정 앱에서 확인해주세요.</string>
     <string name="apn_save_unverified">APN 저장 결과를 확인하지 못했습니다. 다시 시도하기 전에 설정 앱에서 확인해주세요.</string>
-    <string name="apn_broker_timeout">APN 작업의 응답 시간이 초과되었습니다. 설정 앱에서 확인 후 다시 시도해주세요.</string>
+    <string name="apn_broker_timeout">APN 작업이 오래 걸리고 있습니다. 완료될 때까지 기다린 후 APN 목록이나 설정 앱에서 결과를 확인해주세요.</string>
+    <string name="apn_broker_pending">이전 APN 작업이 진행 중입니다. 완료된 후 다시 시도해주세요.</string>
     <string name="copy_apn_button">DUN 추가</string>
     <string name="copy_apn_confirm_message">“%1$s”에 DUN 타입을 추가할까요?\n\n주소: %2$s\n타입: %3$s</string>
     <string name="copy_apn_success">선택한 APN의 DUN 지원을 확인했습니다. 설정 앱에서 확인해주세요.</string>

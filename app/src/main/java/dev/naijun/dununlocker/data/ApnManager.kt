@@ -17,19 +17,22 @@ import dev.naijun.dununlocker.R
 import dev.naijun.dununlocker.domain.model.ApnContent
 import dev.naijun.dununlocker.domain.model.CarrierType
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import org.lsposed.lsparanoid.Obfuscate
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import kotlin.time.Duration.Companion.milliseconds
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.time.Duration.Companion.seconds
 
 @Obfuscate
 class ApnManager(
@@ -38,6 +41,32 @@ class ApnManager(
     companion object {
         private const val TAG = "ApnManager"
         private val brokerMutex = Mutex()
+        internal const val BROKER_REQUEST_ID = "broker_request_id"
+        internal const val BROKER_LOCAL_RESULT = "broker_local_result"
+        private val pendingBrokerResult = AtomicReference<PendingBrokerRequest?>()
+        private val _apnChanges = MutableStateFlow(0)
+        val apnChanges = _apnChanges.asStateFlow()
+
+        internal fun hasLocalBrokerRequest(requestId: String?): Boolean =
+            requestId != null && pendingBrokerResult.get()?.id == requestId
+
+        internal fun onBrokerFinished(requestId: String?, resultCode: Int, results: Bundle?) {
+            val pending = pendingBrokerResult.get() ?: return
+            if (pending.id != requestId || !pendingBrokerResult.compareAndSet(pending, null)) return
+            if (pending.changesApns) _apnChanges.update { it + 1 }
+
+            if (resultCode == 0) {
+                pending.completion.complete(results ?: Bundle())
+            } else {
+                val message = results?.getString("error") ?: "APN broker failed with code $resultCode"
+                pending.completion.completeExceptionally(IllegalStateException(message))
+            }
+        }
+    }
+
+    private class PendingBrokerRequest(val changesApns: Boolean) {
+        val id: String = UUID.randomUUID().toString()
+        val completion = CompletableDeferred<Bundle>()
     }
 
     private val sub: ISub
@@ -174,62 +203,53 @@ class ApnManager(
 
     private suspend fun overrideConfigUsingBroker(bundle: Bundle): Bundle = brokerMutex.withLock {
         withContext(NonCancellable) {
-            withTimeoutOrNull(10_000.milliseconds) {
-                val am = IActivityManager.Stub.asInterface(
-                    ShizukuBinderWrapper(
-                        SystemServiceHelper.getSystemService(Context.ACTIVITY_SERVICE)
-                    )
+            val am = IActivityManager.Stub.asInterface(
+                ShizukuBinderWrapper(
+                    SystemServiceHelper.getSystemService(Context.ACTIVITY_SERVICE)
                 )
+            )
+            val pending = PendingBrokerRequest(bundle.getString("operation") != "list_apns")
+            bundle.putString(BROKER_REQUEST_ID, pending.id)
+            check(pendingBrokerResult.compareAndSet(null, pending)) {
+                context.getString(R.string.apn_broker_pending)
+            }
+            val watcher = object : IInstrumentationWatcher.Stub() {
+                override fun instrumentationStatus(
+                    name: ComponentName?,
+                    resultCode: Int,
+                    results: Bundle?
+                ) = Unit
 
-                suspendCancellableCoroutine<Bundle> { continuation ->
-                    val watcher = object : IInstrumentationWatcher.Stub() {
-                        override fun instrumentationStatus(
-                            name: ComponentName?,
-                            resultCode: Int,
-                            results: Bundle?
-                        ) = Unit
-
-                        override fun instrumentationFinished(
-                            name: ComponentName?,
-                            resultCode: Int,
-                            results: Bundle?
-                        ) {
-                            if (!continuation.isActive) return
-
-                            if (resultCode == 0) {
-                                continuation.resume(results ?: Bundle())
-                            } else {
-                                val message = results?.getString("error")
-                                    ?: "APN broker failed with code $resultCode"
-                                continuation.resumeWithException(IllegalStateException(message))
-                            }
-                        }
-                    }
-
-                    try {
-                        val started = am.startInstrumentation(
-                            ComponentName(context, BrokerInstrumentation::class.java),
-                            null,
-                            ActivityManager.INSTR_FLAG_NO_RESTART,
-                            bundle,
-                            watcher,
-                            UiAutomationConnection(),
-                            0,
-                            null
-                        )
-
-                        if (!started && continuation.isActive) {
-                            continuation.resumeWithException(
-                                IllegalStateException("Failed to start APN broker")
-                            )
-                        }
-                    } catch (e: Exception) {
-                        if (continuation.isActive) {
-                            continuation.resumeWithException(e)
-                        }
+                override fun instrumentationFinished(
+                    name: ComponentName?,
+                    resultCode: Int,
+                    results: Bundle?
+                ) {
+                    if (results?.getBoolean(BROKER_LOCAL_RESULT) != true) {
+                        onBrokerFinished(pending.id, resultCode, results)
                     }
                 }
-            } ?: error(context.getString(R.string.apn_broker_timeout))
+            }
+
+            try {
+                check(am.startInstrumentation(
+                    ComponentName(context, BrokerInstrumentation::class.java),
+                    null,
+                    ActivityManager.INSTR_FLAG_NO_RESTART,
+                    bundle,
+                    watcher,
+                    UiAutomationConnection(),
+                    0,
+                    null
+                )) { "Failed to start APN broker" }
+            } catch (e: Exception) {
+                pendingBrokerResult.compareAndSet(pending, null)
+                throw e
+            }
+
+            // Timing out the waiter must not release the running instrumentation's slot.
+            withTimeoutOrNull(10.seconds) { pending.completion.await() }
+                ?: error(context.getString(R.string.apn_broker_timeout))
         }
     }
 }

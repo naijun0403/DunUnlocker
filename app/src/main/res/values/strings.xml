@@ -67,7 +67,8 @@
     <string name="apn_source_missing">The selected APN is no longer available. Refresh the list.</string>
     <string name="apn_copy_failed">Could not verify the copied APN. Please check the Settings app.</string>
     <string name="apn_save_unverified">Could not verify the saved APN. Check the Settings app before trying again.</string>
-    <string name="apn_broker_timeout">The APN operation timed out. Check the Settings app before trying again.</string>
+    <string name="apn_broker_timeout">The APN operation is taking longer than expected. Wait for it to finish, then check the APN list or Settings.</string>
+    <string name="apn_broker_pending">An APN operation is still running. Try again after it finishes.</string>
     <string name="copy_apn_button">Add DUN</string>
     <string name="copy_apn_confirm_message">Add DUN to “%1$s”?\n\nAPN: %2$s\nTypes: %3$s</string>
     <string name="copy_apn_success">DUN support is available on the selected APN. Please check the Settings app.</string>

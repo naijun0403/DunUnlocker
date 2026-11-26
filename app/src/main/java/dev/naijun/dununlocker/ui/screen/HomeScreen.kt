@@ -46,7 +46,7 @@ fun HomeScreen() {
 
     val snackbarHostState = remember { SnackbarHostState() }
     var isLoading by remember { mutableStateOf(false) }
-    var apnRefreshKey by remember { mutableIntStateOf(0) }
+    val apnRefreshKey by ApnManager.apnChanges.collectAsState()
     var pendingApnRequest by remember { mutableStateOf<ApnRequest?>(null) }
     val manualApnForm = remember { mutableStateOf<ApnFormState?>(null) }
 
@@ -242,10 +242,7 @@ fun HomeScreen() {
                         isLoading = false
                     }
                     val message = result.fold(
-                        onSuccess = {
-                            apnRefreshKey++
-                            resources.getString(confirmed.successMessageRes)
-                        },
+                        onSuccess = { resources.getString(confirmed.successMessageRes) },
                         onFailure = { error ->
                             resources.getString(
                                 R.string.apn_apply_failure,

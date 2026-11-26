@@ -20,6 +20,7 @@ import dev.naijun.dununlocker.util.OneUiUtils
 import dev.naijun.dununlocker.data.NamedApnCopy
 import dev.naijun.dununlocker.data.ApnTypes
 import dev.naijun.dununlocker.data.ApnIdentity
+import dev.naijun.dununlocker.data.ApnManager
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import org.lsposed.lsparanoid.Obfuscate
 import java.lang.reflect.Method
@@ -52,7 +53,7 @@ class BrokerInstrumentation : Instrumentation() {
         )
         val uid = Os.getuid()
         var stopDelegation: Method? = null
-        try {
+        val result = try {
             val stopMethod = resolveStopDelegationMethod()
             am.startDelegateShellPermissionIdentity(
                 uid,
@@ -63,116 +64,10 @@ class BrokerInstrumentation : Instrumentation() {
             )
             stopDelegation = stopMethod
 
-            val operation = arguments.getString(OPERATION_KEY) ?: OPERATION_CREATE
-            val subId = arguments.getInt("sub_id", -1)
-
-            when (operation) {
-                OPERATION_LIST -> {
-                    require(subId >= 0)
-                    listApns(subId)
-                    return
-                }
-                OPERATION_COPY -> {
-                    require(subId >= 0)
-                    val sourceId = arguments.getLong("source_apn_id", -1)
-                    require(sourceId >= 0)
-                    copyApnWithDun(subId, sourceId, arguments.getString("copy_name"))
-                    return
-                }
-            }
-
-            val name = arguments.getString("name") ?: "DUN"
-            val numeric = arguments.getString("numeric") ?: "45005"
-            val mcc = arguments.getString("mcc") ?: "450"
-            val mnc = arguments.getString("mnc") ?: "05"
-            val apn = arguments.getString("apn") ?: ""
-            val type = arguments.getString("type") ?: "default,mms,supl,rcs,dun"
-            val protocol = arguments.getString("protocol") ?: "IPV4V6"
-            val mmsc = arguments.getString("mmsc") ?: ""
-            val mmsProxy = arguments.getString("mms_proxy") ?: ""
-            val mmsPort = arguments.getString("mms_port") ?: ""
-            val roamingProtocol = arguments.getString("roaming_protocol") ?: "IPV4V6"
-            val server = arguments.getString("server") ?: "*"
-            val authType = arguments.getString("auth_type") ?: "0"
-            val user = arguments.getString("user") ?: ""
-            val password = arguments.getString("password") ?: ""
-            if (apn.isEmpty()) {
-                Log.e(UNLOCKER_TAG, "APN address is empty")
-                finish(-2, Bundle())
-                return
-            }
-
-            val telephonyManager = context.getSystemService(TelephonyManager::class.java)
-
-            val apnTypeSets = type.split(",")
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-                .toSet()
-
-            val contentResolver = context.contentResolver
-
-            val uri = if (subId >= 0) {
-                "content://telephony/carriers/subId/$subId".toUri()
-            } else {
-                "content://telephony/carriers".toUri()
-            }
-
-            val values = ContentValues().apply {
-                put("name", name)
-                if (!OneUiUtils.isOneUi() || (OneUiUtils.getOneUiInfo().versionCode ?: 0) < 80500) {
-                    put("numeric", numeric)
-                }
-                put("mcc", mcc)
-                put("mnc", mnc)
-                put("apn", apn)
-                put("type", apnTypeSets.joinToString(","))
-                put("protocol", protocol)
-                put("roaming_protocol", roamingProtocol)
-                put("authtype", authType.toIntOrNull() ?: 0)
-                put("carrier_id", telephonyManager.createForSubscriptionId(subId).simSpecificCarrierId)
-                put("user_visible", 1)
-                put("current", 1)
-                put("always_on", 1)
-
-                if (subId >= 0) {
-                    put("sub_id", subId)
-                }
-
-                if (server.isNotEmpty()) put("server", server)
-
-                if (user.isNotEmpty()) put("user", user)
-                if (password.isNotEmpty()) put("password", password)
-
-                if (mmsc.isNotEmpty()) put("mmsc", mmsc)
-                if (mmsProxy.isNotEmpty()) put("mmsproxy", mmsProxy)
-                if (mmsPort.isNotEmpty()) put("mmsport", mmsPort)
-            }
-
-            val insertedUri = contentResolver.insert(uri, values)
-            val apnId = insertedUri?.let(ContentUris::parseId)
-                ?: findMergedApnId(subId, values)
-                ?: error(context.getString(R.string.apn_save_unverified))
-
-            val preferred = if (subId >= 0) preferredUri(subId)
-                else "content://telephony/carriers/preferapn".toUri()
-            try {
-                contentResolver.update(preferred, ContentValues().apply {
-                    put("apn_id", apnId)
-                }, null, null)
-            } catch (e: Exception) {
-                Log.w(UNLOCKER_TAG, "Failed to set preferred APN", e)
-            }
-
-            finish(0, Bundle().apply {
-                val savedUri = insertedUri ?: ContentUris.withAppendedId(Telephony.Carriers.CONTENT_URI, apnId)
-                putString("inserted_uri", savedUri.toString())
-            })
-
+            Result.success(runApnOperation(arguments))
         } catch (e: Exception) {
             Log.e(UNLOCKER_TAG, "Error in BrokerInstrumentation", e)
-            finish(-100, Bundle().apply {
-                putString("error", e.message ?: "Unknown error")
-            })
+            Result.failure(e)
         } finally {
             stopDelegation?.let { method ->
                 try {
@@ -185,6 +80,122 @@ class BrokerInstrumentation : Instrumentation() {
                     Log.w(UNLOCKER_TAG, "Failed to stop delegate permission", e)
                 }
             }
+        }
+        val resultCode = if (result.isSuccess) 0 else -100
+        val response = result.getOrElse { error ->
+            Bundle().apply { putString("error", error.message ?: "Unknown error") }
+        }
+        val requestId = arguments.getString(ApnManager.BROKER_REQUEST_ID)
+        if (ApnManager.hasLocalBrokerRequest(requestId)) {
+            try {
+                // Avoid sending large APN lists through the watcher when the client is in-process.
+                finish(resultCode, Bundle().apply { putBoolean(ApnManager.BROKER_LOCAL_RESULT, true) })
+            } finally {
+                ApnManager.onBrokerFinished(requestId, resultCode, response)
+            }
+        } else {
+            finish(resultCode, response)
+        }
+    }
+
+    private fun runApnOperation(arguments: Bundle): Bundle {
+        val operation = arguments.getString(OPERATION_KEY) ?: OPERATION_CREATE
+        val subId = arguments.getInt("sub_id", -1)
+
+        when (operation) {
+            OPERATION_LIST -> {
+                require(subId >= 0)
+                return listApns(subId)
+            }
+            OPERATION_COPY -> {
+                require(subId >= 0)
+                val sourceId = arguments.getLong("source_apn_id", -1)
+                require(sourceId >= 0)
+                return copyApnWithDun(subId, sourceId, arguments.getString("copy_name"))
+            }
+        }
+
+        val name = arguments.getString("name") ?: "DUN"
+        val numeric = arguments.getString("numeric") ?: "45005"
+        val mcc = arguments.getString("mcc") ?: "450"
+        val mnc = arguments.getString("mnc") ?: "05"
+        val apn = arguments.getString("apn") ?: ""
+        val type = arguments.getString("type") ?: "default,mms,supl,rcs,dun"
+        val protocol = arguments.getString("protocol") ?: "IPV4V6"
+        val mmsc = arguments.getString("mmsc") ?: ""
+        val mmsProxy = arguments.getString("mms_proxy") ?: ""
+        val mmsPort = arguments.getString("mms_port") ?: ""
+        val roamingProtocol = arguments.getString("roaming_protocol") ?: "IPV4V6"
+        val server = arguments.getString("server") ?: "*"
+        val authType = arguments.getString("auth_type") ?: "0"
+        val user = arguments.getString("user") ?: ""
+        val password = arguments.getString("password") ?: ""
+        require(apn.isNotEmpty()) { "APN address is empty" }
+
+        val telephonyManager = context.getSystemService(TelephonyManager::class.java)
+
+        val apnTypeSets = type.split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .toSet()
+
+        val contentResolver = context.contentResolver
+
+        val uri = if (subId >= 0) {
+            "content://telephony/carriers/subId/$subId".toUri()
+        } else {
+            "content://telephony/carriers".toUri()
+        }
+
+        val values = ContentValues().apply {
+            put("name", name)
+            if (!OneUiUtils.isOneUi() || (OneUiUtils.getOneUiInfo().versionCode ?: 0) < 80500) {
+                put("numeric", numeric)
+            }
+            put("mcc", mcc)
+            put("mnc", mnc)
+            put("apn", apn)
+            put("type", apnTypeSets.joinToString(","))
+            put("protocol", protocol)
+            put("roaming_protocol", roamingProtocol)
+            put("authtype", authType.toIntOrNull() ?: 0)
+            put("carrier_id", telephonyManager.createForSubscriptionId(subId).simSpecificCarrierId)
+            put("user_visible", 1)
+            put("current", 1)
+            put("always_on", 1)
+
+            if (subId >= 0) {
+                put("sub_id", subId)
+            }
+
+            if (server.isNotEmpty()) put("server", server)
+
+            if (user.isNotEmpty()) put("user", user)
+            if (password.isNotEmpty()) put("password", password)
+
+            if (mmsc.isNotEmpty()) put("mmsc", mmsc)
+            if (mmsProxy.isNotEmpty()) put("mmsproxy", mmsProxy)
+            if (mmsPort.isNotEmpty()) put("mmsport", mmsPort)
+        }
+
+        val insertedUri = contentResolver.insert(uri, values)
+        val apnId = insertedUri?.let(ContentUris::parseId)
+            ?: findMergedApnId(subId, values)
+            ?: error(context.getString(R.string.apn_save_unverified))
+
+        val preferred = if (subId >= 0) preferredUri(subId)
+            else "content://telephony/carriers/preferapn".toUri()
+        try {
+            contentResolver.update(preferred, ContentValues().apply {
+                put("apn_id", apnId)
+            }, null, null)
+        } catch (e: Exception) {
+            Log.w(UNLOCKER_TAG, "Failed to set preferred APN", e)
+        }
+
+        return Bundle().apply {
+            val savedUri = insertedUri ?: ContentUris.withAppendedId(Telephony.Carriers.CONTENT_URI, apnId)
+            putString("inserted_uri", savedUri.toString())
         }
     }
 
@@ -208,7 +219,7 @@ class BrokerInstrumentation : Instrumentation() {
         preferredUri(subId), arrayOf("_id"), null, null, null
     )?.use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else null }
 
-    private fun listApns(subId: Int) {
+    private fun listApns(subId: Int): Bundle {
         val preferredId = try {
             preferredId(subId)
         } catch (e: Exception) {
@@ -231,10 +242,10 @@ class BrokerInstrumentation : Instrumentation() {
                 })
             }
         }
-        finish(0, Bundle().apply { putParcelableArrayList("apns", rows) })
+        return Bundle().apply { putParcelableArrayList("apns", rows) }
     }
 
-    private fun copyApnWithDun(subId: Int, sourceId: Long, copyName: String?) {
+    private fun copyApnWithDun(subId: Int, sourceId: Long, copyName: String?): Bundle {
         val resolver = context.contentResolver
         val values = resolver.query(
             simApnsUri(subId), null, "_id=?", arrayOf(sourceId.toString()), null
@@ -244,15 +255,13 @@ class BrokerInstrumentation : Instrumentation() {
         } ?: error(context.getString(R.string.apn_source_missing))
 
         if (copyName != null) {
-            createNamedCopy(subId, values, copyName)
-            return
+            return createNamedCopy(subId, values, copyName)
         }
 
         val types = values.getAsString("type")
         val typesWithDun = ApnTypes.withDun(types)
         if (typesWithDun == types) {
-            finish(0, Bundle())
-            return
+            return Bundle()
         }
 
         val wasPreferred = preferredId(subId) == sourceId
@@ -272,10 +281,10 @@ class BrokerInstrumentation : Instrumentation() {
                 put("apn_id", targetId)
             }, null, null)
         }
-        finish(0, Bundle())
+        return Bundle()
     }
 
-    private fun createNamedCopy(subId: Int, source: ContentValues, name: String) {
+    private fun createNamedCopy(subId: Int, source: ContentValues, name: String): Bundle {
         val copyId = try {
             NamedApnCopy.save(context.contentResolver, source, subId, name)
         } catch (e: NamedApnCopy.Rejected) {
@@ -288,7 +297,7 @@ class BrokerInstrumentation : Instrumentation() {
             }
             error(context.getString(message))
         }
-        finish(0, Bundle().apply { putLong("copied_apn_id", copyId) })
+        return Bundle().apply { putLong("copied_apn_id", copyId) }
     }
 
     private fun findMergedApnId(subId: Int, expected: ContentValues): Long? {
