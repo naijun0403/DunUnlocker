@@ -21,6 +21,7 @@ import dev.naijun.dununlocker.data.NamedApnCopy
 import dev.naijun.dununlocker.data.ApnTypes
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import org.lsposed.lsparanoid.Obfuscate
+import java.lang.reflect.Method
 
 const val UNLOCKER_TAG = "BrokerInstrumentation"
 
@@ -48,14 +49,18 @@ class BrokerInstrumentation : Instrumentation() {
                 SystemServiceHelper.getSystemService(Context.ACTIVITY_SERVICE)
             )
         )
+        val uid = Os.getuid()
+        var stopDelegation: Method? = null
         try {
+            val stopMethod = resolveStopDelegationMethod()
             am.startDelegateShellPermissionIdentity(
-                Os.getuid(),
+                uid,
                 arrayOf(
                     Manifest.permission.WRITE_APN_SETTINGS,
                     Manifest.permission.READ_PRIVILEGED_PHONE_STATE
                 )
             )
+            stopDelegation = stopMethod
 
             val operation = arguments.getString(OPERATION_KEY) ?: OPERATION_CREATE
             val subId = arguments.getInt("sub_id", -1)
@@ -174,11 +179,27 @@ class BrokerInstrumentation : Instrumentation() {
                 putString("error", e.message ?: "Unknown error")
             })
         } finally {
-            try {
-                am.stopDelegateShellPermissionIdentity()
-            } catch (e: Exception) {
-                Log.w(UNLOCKER_TAG, "Failed to stop delegate permission: ${e.message}")
+            stopDelegation?.let { method ->
+                try {
+                    if (method.parameterCount == 1) {
+                        method.invoke(am, uid)
+                    } else {
+                        method.invoke(am)
+                    }
+                } catch (e: Exception) {
+                    Log.w(UNLOCKER_TAG, "Failed to stop delegate permission", e)
+                }
             }
+        }
+    }
+
+    private fun resolveStopDelegationMethod(): Method {
+        val manager = IActivityManager::class.java
+        val name = "stopDelegateShellPermissionIdentity"
+        return try {
+            manager.getMethod(name, Integer.TYPE)
+        } catch (_: NoSuchMethodException) {
+            manager.getMethod(name)
         }
     }
 
