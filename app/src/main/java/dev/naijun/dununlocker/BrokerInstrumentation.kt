@@ -19,6 +19,7 @@ import androidx.core.net.toUri
 import dev.naijun.dununlocker.util.OneUiUtils
 import dev.naijun.dununlocker.data.NamedApnCopy
 import dev.naijun.dununlocker.data.ApnTypes
+import dev.naijun.dununlocker.data.ApnIdentity
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import org.lsposed.lsparanoid.Obfuscate
 import java.lang.reflect.Method
@@ -148,30 +149,24 @@ class BrokerInstrumentation : Instrumentation() {
             }
 
             val insertedUri = contentResolver.insert(uri, values)
+            val apnId = insertedUri?.let(ContentUris::parseId)
+                ?: findMergedApnId(subId, values)
+                ?: error(context.getString(R.string.apn_save_unverified))
 
-            if (insertedUri != null) {
-                try {
-                    val apnId = insertedUri.lastPathSegment
-                    val preferredUri = if (subId >= 0) {
-                        "content://telephony/carriers/preferapn/subId/$subId".toUri()
-                    } else {
-                        "content://telephony/carriers/preferapn".toUri()
-                    }
-                    val preferredValues = ContentValues().apply {
-                        put("apn_id", apnId)
-                    }
-                    contentResolver.update(preferredUri, preferredValues, null, null)
-                } catch (e: Exception) {
-                    Log.w(UNLOCKER_TAG, "Failed to set preferred APN: ${e.message}")
-                }
-
-                finish(0, Bundle().apply {
-                    putString("inserted_uri", insertedUri.toString())
-                })
-            } else {
-                Log.e(UNLOCKER_TAG, "Failed to insert APN")
-                finish(-3, Bundle())
+            val preferred = if (subId >= 0) preferredUri(subId)
+                else "content://telephony/carriers/preferapn".toUri()
+            try {
+                contentResolver.update(preferred, ContentValues().apply {
+                    put("apn_id", apnId)
+                }, null, null)
+            } catch (e: Exception) {
+                Log.w(UNLOCKER_TAG, "Failed to set preferred APN", e)
             }
+
+            finish(0, Bundle().apply {
+                val savedUri = insertedUri ?: ContentUris.withAppendedId(Telephony.Carriers.CONTENT_URI, apnId)
+                putString("inserted_uri", savedUri.toString())
+            })
 
         } catch (e: Exception) {
             Log.e(UNLOCKER_TAG, "Error in BrokerInstrumentation", e)
@@ -296,28 +291,53 @@ class BrokerInstrumentation : Instrumentation() {
         finish(0, Bundle().apply { putLong("copied_apn_id", copyId) })
     }
 
-    private fun findCopiedApnId(subId: Int, expected: ContentValues): Long? {
+    private fun findMergedApnId(subId: Int, expected: ContentValues): Long? {
+        val uri = if (subId >= 0) simApnsUri(subId) else Telephony.Carriers.CONTENT_URI
+        return findMatchingApnId(uri, expected.getAsString("apn").orEmpty()) { actual ->
+            ApnIdentity.matches(expected, actual) && expected.keySet().all { key ->
+                when (key) {
+                    // The SIM query already scopes the result. The provider owns the current flag.
+                    "sub_id", "current" -> true
+                    "type" -> ApnTypes.includesAll(actual.getAsString(key), expected.getAsString(key))
+                    else -> actual.getAsString(key) == expected.getAsString(key)
+                }
+            }
+        }
+    }
+
+    private fun findCopiedApnId(subId: Int, expected: ContentValues): Long? =
+        findMatchingApnId(simApnsUri(subId), expected.getAsString("apn").orEmpty()) { actual ->
+            expected.keySet().all { key ->
+                when (key) {
+                    "type" -> ApnTypes.equivalent(actual.getAsString(key), expected.getAsString(key))
+                    // AOSP may assign profile 1 when creating a separate DUN row.
+                    "profile_id" -> actual.getAsString(key) == expected.getAsString(key) ||
+                        (expected.getAsInteger(key) == 0 && actual.getAsInteger(key) == 1)
+                    else -> actual.getAsString(key) == expected.getAsString(key)
+                }
+            }
+        }
+
+    private fun findMatchingApnId(
+        uri: Uri,
+        address: String,
+        matches: (ContentValues) -> Boolean
+    ): Long? {
         return context.contentResolver.query(
-            simApnsUri(subId), null, "apn=?",
-            arrayOf(expected.getAsString("apn").orEmpty()), null
+            uri, null, "apn=?", arrayOf(address), null
         )?.use { cursor ->
-            val matches = mutableListOf<Long>()
+            var matchedId: Long? = null
             while (cursor.moveToNext()) {
                 val actual = ContentValues().also {
                     DatabaseUtils.cursorRowToContentValues(cursor, it)
                 }
-                val matchesFields = expected.keySet().all { key ->
-                    when (key) {
-                        "type" -> ApnTypes.equivalent(actual.getAsString(key), expected.getAsString(key))
-                        // AOSP may assign profile 1 when creating a separate DUN row.
-                        "profile_id" -> actual.getAsString(key) == expected.getAsString(key) ||
-                            (expected.getAsInteger(key) == 0 && actual.getAsInteger(key) == 1)
-                        else -> actual.getAsString(key) == expected.getAsString(key)
-                    }
+                if (matches(actual)) {
+                    val id = actual.getAsLong("_id") ?: return@use null
+                    if (matchedId != null) return@use null
+                    matchedId = id
                 }
-                if (matchesFields) matches.add(actual.getAsLong("_id"))
             }
-            matches.singleOrNull()
+            matchedId
         }
     }
 

@@ -1,5 +1,6 @@
 package dev.naijun.dununlocker.data
 
+import android.telephony.data.ApnSetting
 import java.util.Locale
 
 internal object ApnTypes {
@@ -16,6 +17,14 @@ internal object ApnTypes {
     }
 
     fun equivalent(first: String?, second: String?): Boolean = normalize(first) == normalize(second)
+
+    fun includesAll(actual: String?, requested: String?): Boolean {
+        val requestedTypes = normalize(requested)
+        if (requestedTypes.any { ApnSetting.getApnTypeInt(it) == 0 }) return false
+        val requestedMask = ApnSetting.getApnTypesBitmaskFromString(requestedTypes.joinToString(","))
+        val actualMask = ApnSetting.getApnTypesBitmaskFromString(normalize(actual).joinToString(","))
+        return requestedMask != 0 && (actualMask and requestedMask) == requestedMask
+    }
 
     private fun normalize(types: String?): Set<String> = entries(types)
         .map { it.lowercase(Locale.ROOT) }.toSet()

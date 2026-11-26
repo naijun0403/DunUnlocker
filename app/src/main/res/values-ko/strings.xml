@@ -61,6 +61,7 @@
     <string name="apn_list_empty">선택한 SIM에서 복사할 APN을 찾지 못했습니다.</string>
     <string name="apn_source_missing">선택한 APN이 더 이상 존재하지 않습니다. 목록을 새로고침해주세요.</string>
     <string name="apn_copy_failed">복사한 APN에 DUN이 반영되었는지 확인하지 못했습니다. 설정 앱에서 확인해주세요.</string>
+    <string name="apn_save_unverified">APN 저장 결과를 확인하지 못했습니다. 다시 시도하기 전에 설정 앱에서 확인해주세요.</string>
     <string name="apn_broker_timeout">APN 작업의 응답 시간이 초과되었습니다. 설정 앱에서 확인 후 다시 시도해주세요.</string>
     <string name="copy_apn_button">DUN 추가</string>
     <string name="copy_apn_confirm_message">“%1$s”에 DUN 타입을 추가할까요?\n\n주소: %2$s\n타입: %3$s</string>
