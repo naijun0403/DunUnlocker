@@ -42,16 +42,13 @@ class ApnManager(
     }
 
     private val sub: ISub
-        get() = ISub.Stub.asInterface(
-            TelephonyFrameworkInitializer
-                .getTelephonyServiceManager()
-                .subscriptionServiceRegisterer
-                .get()?.let {
-                    ShizukuBinderWrapper(
-                        it,
-                    )
-                }
-        )
+        get() {
+            val subscriptionService = TelephonyFrameworkInitializer.getTelephonyServiceManager()
+                ?.subscriptionServiceRegisterer
+                ?.get()
+                ?: error("Subscription service is unavailable")
+            return ISub.Stub.asInterface(ShizukuBinderWrapper(subscriptionService))
+        }
 
     fun getActiveSubscriptions(): List<SimInfo> {
         return try {
