@@ -41,6 +41,10 @@
     <string name="sim_card_selection">SIM Card Selection</string>
     <string name="sim_card_label">SIM Card</string>
     <string name="no_active_sim">No active SIM cards</string>
+    <string name="sim_loading">Loading SIM cards…</string>
+    <string name="sim_load_failed">Could not load SIM cards</string>
+    <string name="sim_refresh">Refresh SIM cards</string>
+    <string name="sim_selection_changed">Check the current SIM selection and try again.</string>
     <string name="sim_select_placeholder">Select a SIM</string>
     <string name="sim_info_format">MCC: %1$s, MNC: %2$s</string>
     <string name="sim_unknown_carrier">Unknown</string>

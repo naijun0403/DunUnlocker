@@ -27,7 +27,6 @@ import kotlinx.coroutines.withContext
 import org.lsposed.lsparanoid.Obfuscate
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
-import kotlin.collections.emptyList
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.time.Duration.Companion.milliseconds
@@ -50,21 +49,21 @@ class ApnManager(
             return ISub.Stub.asInterface(ShizukuBinderWrapper(subscriptionService))
         }
 
-    fun getActiveSubscriptions(): List<SimInfo> {
-        return try {
+    suspend fun getActiveSubscriptions(): Result<List<SimInfo>> = withContext(Dispatchers.IO) {
+        try {
             val activeSubscriptions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
                 sub.getActiveSubscriptionInfoList(null, null, true)
             } else {
-                sub::class.java.getMethod(
+                ISub::class.java.getMethod(
                     "getActiveSubscriptionInfoList",
                     String::class.java,
                     String::class.java,
                 ).invoke(sub, null, null)
                     ?.let { it as? List<*> }
                     ?.filterIsInstance<SubscriptionInfo>()
-            } ?: return emptyList()
+            }.orEmpty()
 
-            activeSubscriptions.map { info ->
+            Result.success(activeSubscriptions.map { info ->
                 SimInfo(
                     subscriptionId = info.subscriptionId,
                     slotIndex = info.simSlotIndex,
@@ -75,10 +74,12 @@ class ApnManager(
                     mcc = info.mccString ?: "",
                     mnc = info.mncString ?: ""
                 )
-            }
+            })
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get subscriptions", e)
-            emptyList()
+            Result.failure(e)
         }
     }
 

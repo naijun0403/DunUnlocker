@@ -16,6 +16,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import dev.naijun.dununlocker.R
 import kotlinx.coroutines.CancellationException
 import dev.naijun.dununlocker.data.ApnManager
@@ -25,6 +27,7 @@ import dev.naijun.dununlocker.ui.components.ApnConfigSection
 import dev.naijun.dununlocker.ui.components.ShizukuStatusCard
 import dev.naijun.dununlocker.ui.components.SimSelectionCard
 import dev.naijun.dununlocker.ui.model.ApnRequest
+import dev.naijun.dununlocker.ui.model.ApnFormState
 import dev.naijun.dununlocker.ui.model.execute
 import dev.naijun.dununlocker.ui.model.successMessageRes
 import kotlinx.coroutines.launch
@@ -45,21 +48,30 @@ fun HomeScreen() {
     var isLoading by remember { mutableStateOf(false) }
     var apnRefreshKey by remember { mutableIntStateOf(0) }
     var pendingApnRequest by remember { mutableStateOf<ApnRequest?>(null) }
+    val manualApnForm = remember { mutableStateOf<ApnFormState?>(null) }
 
-    var simList by remember { mutableStateOf<List<SimInfo>>(emptyList()) }
-    var selectedSim by remember { mutableStateOf<SimInfo?>(null) }
+    var simRefreshKey by remember { mutableIntStateOf(0) }
+    var simResult by remember(shizukuGranted) { mutableStateOf<Result<List<SimInfo>>?>(null) }
+    var loadedSimRefreshKey by remember(shizukuGranted) { mutableStateOf<Int?>(null) }
+    val isSimLoading = loadedSimRefreshKey != simRefreshKey
+    val simList = simResult?.getOrNull().orEmpty()
+    var selectedSimId by remember(shizukuGranted) { mutableStateOf<Int?>(null) }
+    val selectedSim = simList.firstOrNull { it.subscriptionId == selectedSimId }
     var showAppInfoDialog by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
 
-    LaunchedEffect(shizukuGranted) {
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { simRefreshKey++ }
+
+    LaunchedEffect(shizukuGranted, simRefreshKey) {
         if (shizukuGranted) {
-            simList = apnManager.getActiveSubscriptions()
-            if (simList.size == 1) {
-                selectedSim = simList.first()
+            val requestedRefreshKey = simRefreshKey
+            val result = apnManager.getActiveSubscriptions()
+            result.onSuccess { sims ->
+                selectedSimId = sims.singleOrNull()?.subscriptionId
+                    ?: selectedSimId?.takeIf { id -> sims.any { it.subscriptionId == id } }
             }
-        } else {
-            simList = emptyList()
-            selectedSim = null
+            simResult = result
+            loadedSimRefreshKey = requestedRefreshKey
         }
     }
 
@@ -135,16 +147,21 @@ fun HomeScreen() {
                         SimSelectionCard(
                             simList = simList,
                             selectedSim = selectedSim,
-                            onSimSelected = { selectedSim = it }
+                            isLoading = isSimLoading,
+                            loadFailed = simResult?.isFailure == true,
+                            onRefresh = { simRefreshKey++ },
+                            onSimSelected = { selectedSimId = it?.subscriptionId }
                         )
 
                         AnimatedVisibility(
-                            visible = selectedSim != null || simList.isEmpty(),
+                            visible = simResult?.isSuccess == true &&
+                                (selectedSim != null || simList.isEmpty()),
                             enter = fadeIn() + expandVertically(),
                             exit = fadeOut() + shrinkVertically()
                         ) {
                             ApnConfigSection(
                                 subscriptionId = selectedSim?.subscriptionId,
+                                formState = manualApnForm,
                                 refreshKey = apnRefreshKey,
                                 loadApns = apnManager::getApns,
                                 onCopyApnClicked = { apn ->
@@ -203,6 +220,16 @@ fun HomeScreen() {
             request = request,
             onConfirm = { confirmed ->
                 pendingApnRequest = null
+                val targetSimId = confirmed.sim?.subscriptionId
+                if (!shizukuGranted || isSimLoading || simResult?.isSuccess != true ||
+                    targetSimId != selectedSim?.subscriptionId ||
+                    (targetSimId == null && simList.isNotEmpty())
+                ) {
+                    scope.launch {
+                        snackbarHostState.showSnackbar(resources.getString(R.string.sim_selection_changed))
+                    }
+                    return@ApnApplyConfirmDialog
+                }
                 scope.launch {
                     isLoading = true
                     val result = try {

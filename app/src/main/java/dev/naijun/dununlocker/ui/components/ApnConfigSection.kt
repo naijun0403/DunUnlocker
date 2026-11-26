@@ -40,11 +40,12 @@ fun ApnConfigSection(
     onCopyApnClicked: (ApnSummary) -> Unit,
     onNamedCopyApnClicked: (ApnSummary) -> Unit,
     onApplyClicked: (ApnFormState) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    formState: MutableState<ApnFormState?> = remember { mutableStateOf(null) }
 ) {
     var selectedCopyId by rememberSaveable(subscriptionId) { mutableStateOf<Long?>(null) }
     var mode by rememberSaveable { mutableStateOf(ConfigurationMode.Existing) }
-    var form by remember { mutableStateOf<ApnFormState?>(null) }
+    var form by formState
     val scope = rememberCoroutineScope()
     val modeAnchor = remember { BringIntoViewRequester() }
 
