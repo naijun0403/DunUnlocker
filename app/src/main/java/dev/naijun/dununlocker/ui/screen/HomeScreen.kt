@@ -164,7 +164,9 @@ fun HomeScreen() {
                                 subscriptionId = selectedSim?.subscriptionId,
                                 formState = manualApnForm,
                                 refreshKey = apnRefreshKey,
-                                loadApns = apnManager::getApns,
+                                loadApns = { subId, forceRefresh ->
+                                    apnManager.getApns(subId, forceRefresh)
+                                },
                                 onCopyApnClicked = { apn ->
                                     selectedSim?.let { sim ->
                                         pendingApnRequest = ApnRequest.AddDun(apn, sim)

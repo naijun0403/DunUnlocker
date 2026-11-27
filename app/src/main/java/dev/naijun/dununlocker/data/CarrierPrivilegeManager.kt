@@ -34,85 +34,122 @@ internal object CarrierPrivilegeManager {
     suspend fun <T> withCarrierPrivileges(
         context: Context,
         subId: Int,
-        useShizuku: Boolean = true,
-        callingPackage: String = if (useShizuku) SHELL_PACKAGE else context.packageName,
-        withShellIdentity: ((() -> Unit) -> Unit)? = null,
         block: () -> T
     ): T {
         require(subId >= 0) { context.getString(R.string.carrier_privilege_no_sub) }
 
         val telephonyManager = context.getSystemService(TelephonyManager::class.java)
             .createForSubscriptionId(subId)
-
-        if (telephonyManager.hasCarrierPrivileges()) {
-            return block()
-        }
-
-        val rawBinder = SystemServiceHelper.getSystemService(Context.CARRIER_CONFIG_SERVICE)
-            ?: error("CarrierConfig service unavailable")
-        val binder = if (useShizuku) ShizukuBinderWrapper(rawBinder) else rawBinder
-        val loader = ICarrierConfigLoader.Stub.asInterface(binder)
-
-        val runPrivileged: (() -> Unit) -> Unit = withShellIdentity ?: { action -> action() }
-
-        var existingCerts: List<String> = emptyList()
-        runPrivileged {
-            existingCerts = readExistingCertificates(loader, subId, callingPackage)
-        }
-
         val selfCertRules = getSelfCertificateRules(context)
         check(selfCertRules.isNotEmpty()) { "Could not read app signing certificate" }
 
-        val mergedCerts = (existingCerts + selfCertRules).distinct().toTypedArray()
-        val overrideBundle = PersistableBundle().apply {
-            putBoolean(CarrierConfigManager.KEY_CARRIER_CONFIG_APPLIED_BOOL, true)
-            putStringArray(CarrierConfigManager.KEY_CARRIER_CERTIFICATE_STRING_ARRAY, mergedCerts)
+        val loader = getCarrierConfigLoader()
+        val existingCerts = readExistingCertificates(loader, subId)
+        val hasStaleSelfRule = containsSelfCertificateRule(existingCerts, selfCertRules)
+        val baseCerts = removeSelfCertificateRules(existingCerts, selfCertRules)
+
+        // Only bypass override management when the app already holds genuine carrier privileges
+        // rather than a stale carrier config rule left behind by an earlier crash.
+        if (telephonyManager.hasCarrierPrivileges() && !hasStaleSelfRule) {
+            return block()
         }
 
-        runPrivileged {
-            loader.overrideConfig(subId, overrideBundle, false)
+        if (!telephonyManager.hasCarrierPrivileges()) {
+            val mergedCerts = mergeCertificateRules(baseCerts, selfCertRules)
+            overrideCarrierCertificates(loader, subId, mergedCerts)
         }
+
         return try {
-            val granted = waitForCarrierPrivileges(telephonyManager)
-            if (!granted) {
+            if (!waitForCarrierPrivileges(telephonyManager)) {
                 error(context.getString(R.string.carrier_privilege_timeout))
             }
             block()
         } finally {
             withContext(NonCancellable) {
                 try {
-                    runPrivileged {
-                        loader.overrideConfig(subId, null, false)
-                    }
+                    overrideCarrierCertificates(loader, subId, baseCerts.toTypedArray())
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to clear temporary carrier config override", e)
+                    Log.w(TAG, "Failed to restore temporary carrier certificate override", e)
                 }
             }
         }
     }
 
-    private fun readExistingCertificates(
+    /**
+     * Cleans up a leftover self-certificate rule if a previous process crashed before finally ran.
+     * Costs zero Shizuku IPCs in the normal case where carrier privileges are not active.
+     */
+    fun cleanupStaleOverrideIfNeeded(context: Context, subId: Int) {
+        if (subId < 0) return
+        val telephonyManager = context.getSystemService(TelephonyManager::class.java)
+            .createForSubscriptionId(subId)
+        if (!telephonyManager.hasCarrierPrivileges()) return
+
+        val selfCertRules = getSelfCertificateRules(context)
+        if (selfCertRules.isEmpty()) return
+
+        val loader = getCarrierConfigLoader()
+        val existingCerts = readExistingCertificates(loader, subId)
+        if (!containsSelfCertificateRule(existingCerts, selfCertRules)) return
+
+        val baseCerts = removeSelfCertificateRules(existingCerts, selfCertRules)
+        overrideCarrierCertificates(loader, subId, baseCerts.toTypedArray())
+    }
+
+    internal fun containsSelfCertificateRule(
+        existingCerts: List<String>,
+        selfCertRules: List<String>
+    ): Boolean = existingCerts.any { existing ->
+        selfCertRules.any { rule -> existing.equals(rule, ignoreCase = true) }
+    }
+
+    internal fun removeSelfCertificateRules(
+        existingCerts: List<String>,
+        selfCertRules: List<String>
+    ): List<String> = existingCerts.filterNot { existing ->
+        selfCertRules.any { rule -> existing.equals(rule, ignoreCase = true) }
+    }
+
+    internal fun mergeCertificateRules(
+        baseCerts: List<String>,
+        selfCertRules: List<String>
+    ): Array<String> = (baseCerts + selfCertRules)
+        .distinctBy { it.lowercase() }
+        .toTypedArray()
+
+    private fun getCarrierConfigLoader(): ICarrierConfigLoader {
+        val rawBinder = SystemServiceHelper.getSystemService(Context.CARRIER_CONFIG_SERVICE)
+            ?: error("CarrierConfig service unavailable")
+        return ICarrierConfigLoader.Stub.asInterface(ShizukuBinderWrapper(rawBinder))
+    }
+
+    /**
+     * Updates only KEY_CARRIER_CERTIFICATE_STRING_ARRAY in the non-persistent override bundle.
+     * Unlike passing null (which clears mOverrideConfigs[phoneId] entirely), passing a single-key
+     * PersistableBundle merges via putAll() and preserves unrelated overrides set by third-party tools.
+     */
+    private fun overrideCarrierCertificates(
         loader: ICarrierConfigLoader,
         subId: Int,
-        callingPackage: String
-    ): List<String> {
-        val bundle = try {
-            loader.getConfigForSubIdWithFeature(subId, callingPackage, null)
-        } catch (e: Throwable) {
-            try {
-                loader.getConfigForSubId(subId, callingPackage)
-            } catch (fallbackError: Throwable) {
-                Log.w(TAG, "Could not read existing carrier certificates", fallbackError)
-                null
-            }
+        certificates: Array<String>
+    ) {
+        val overrideBundle = PersistableBundle().apply {
+            putStringArray(CarrierConfigManager.KEY_CARRIER_CERTIFICATE_STRING_ARRAY, certificates)
         }
+        loader.overrideConfig(subId, overrideBundle, false)
+    }
+
+    private fun readExistingCertificates(
+        loader: ICarrierConfigLoader,
+        subId: Int
+    ): List<String> {
+        val bundle = loader.getConfigForSubIdWithFeature(subId, SHELL_PACKAGE, null)
         return bundle
             ?.getStringArray(CarrierConfigManager.KEY_CARRIER_CERTIFICATE_STRING_ARRAY)
             ?.toList()
             .orEmpty()
     }
 
-    @Suppress("DEPRECATION")
     private fun getSelfCertificateRules(context: Context): List<String> {
         val packageInfo = context.packageManager.getPackageInfo(
             context.packageName,

@@ -6,14 +6,10 @@ import android.app.Instrumentation
 import android.content.Context
 import android.os.Bundle
 import android.system.Os
-import android.telephony.SubscriptionManager
 import android.util.Log
 import dev.naijun.dununlocker.data.ApnManager
 import dev.naijun.dununlocker.data.ApnOperations
-import dev.naijun.dununlocker.data.CarrierPrivilegeManager
 import dev.naijun.dununlocker.domain.model.ApnContent
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import org.lsposed.lsparanoid.Obfuscate
 import rikka.shizuku.ShizukuBinderWrapper
@@ -23,7 +19,6 @@ import java.lang.reflect.Method
 const val UNLOCKER_TAG = "BrokerInstrumentation"
 
 private const val PERMISSION_READ_PRIVILEGED_PHONE_STATE = "android.permission.READ_PRIVILEGED_PHONE_STATE"
-private const val PERMISSION_MODIFY_PHONE_STATE = "android.permission.MODIFY_PHONE_STATE"
 private const val OPERATION_KEY = "operation"
 private const val OPERATION_CREATE = "create"
 private const val OPERATION_COPY = "copy_apn"
@@ -31,6 +26,11 @@ private const val OPERATION_LIST = "list_apns"
 
 @Obfuscate
 class BrokerInstrumentation : Instrumentation() {
+
+    private class ApnPermissionDeniedException(
+        message: String,
+        cause: Throwable
+    ) : Exception(message, cause)
 
     override fun onCreate(arguments: Bundle?) {
         HiddenApiBypass.setHiddenApiExemptions("")
@@ -43,17 +43,8 @@ class BrokerInstrumentation : Instrumentation() {
             return
         }
 
-        val useAdbShell = arguments.getString("use_adb_shell") == "true" ||
-            arguments.getBoolean("use_adb_shell", false)
-        val hasShellWriteApn = CarrierPrivilegeManager.hasShellWriteApnPermission(context)
-
         val result = try {
-            val bundle = if (useAdbShell || !hasShellWriteApn) {
-                executeWithAdbShell(arguments, hasShellWriteApn)
-            } else {
-                executeWithShizukuDelegation(arguments)
-            }
-            Result.success(bundle)
+            Result.success(executeWithShizukuDelegation(arguments))
         } catch (e: Exception) {
             Log.e(UNLOCKER_TAG, "Error in BrokerInstrumentation", e)
             Result.failure(e)
@@ -61,7 +52,12 @@ class BrokerInstrumentation : Instrumentation() {
 
         val resultCode = if (result.isSuccess) 0 else -100
         val response = result.getOrElse { error ->
-            Bundle().apply { putString("error", error.message ?: "Unknown error") }
+            Bundle().apply {
+                putString("error", error.message ?: "Unknown error")
+                if (error is ApnPermissionDeniedException) {
+                    putBoolean(ApnManager.BROKER_APN_PERMISSION_DENIED, true)
+                }
+            }
         }
         val requestId = arguments.getString(ApnManager.BROKER_REQUEST_ID)
         if (ApnManager.hasLocalBrokerRequest(requestId)) {
@@ -94,7 +90,17 @@ class BrokerInstrumentation : Instrumentation() {
                 )
             )
             stopDelegation = stopMethod
-            runApnOperation(arguments)
+            try {
+                runApnOperation(arguments)
+            } catch (e: SecurityException) {
+                if (isTelephonyApnPermissionError(e)) {
+                    throw ApnPermissionDeniedException(
+                        e.message ?: "No permission to access APN settings",
+                        e
+                    )
+                }
+                throw e
+            }
         } finally {
             stopDelegation?.let { method ->
                 try {
@@ -110,49 +116,9 @@ class BrokerInstrumentation : Instrumentation() {
         }
     }
 
-    private fun executeWithAdbShell(arguments: Bundle, hasShellWriteApn: Boolean): Bundle {
-        val automation = uiAutomation
-        if (hasShellWriteApn) {
-            automation.adoptShellPermissionIdentity(
-                Manifest.permission.WRITE_APN_SETTINGS,
-                PERMISSION_READ_PRIVILEGED_PHONE_STATE
-            )
-            return try {
-                runApnOperation(arguments)
-            } finally {
-                automation.dropShellPermissionIdentity()
-            }
-        }
-
-        val subId = parseSubId(arguments).let {
-            if (it >= 0) it else SubscriptionManager.getDefaultDataSubscriptionId()
-        }
-        return runBlocking(Dispatchers.IO) {
-            CarrierPrivilegeManager.withCarrierPrivileges(
-                context = context,
-                subId = subId,
-                useShizuku = false,
-                callingPackage = context.packageName,
-                withShellIdentity = { action ->
-                    automation.adoptShellPermissionIdentity(
-                        PERMISSION_MODIFY_PHONE_STATE,
-                        PERMISSION_READ_PRIVILEGED_PHONE_STATE
-                    )
-                    try {
-                        action()
-                    } finally {
-                        automation.dropShellPermissionIdentity()
-                    }
-                }
-            ) {
-                runApnOperation(arguments, fallbackSubId = subId)
-            }
-        }
-    }
-
-    private fun runApnOperation(arguments: Bundle, fallbackSubId: Int = -1): Bundle {
+    private fun runApnOperation(arguments: Bundle): Bundle {
         val operation = arguments.getString(OPERATION_KEY) ?: OPERATION_CREATE
-        val subId = parseSubId(arguments).let { if (it >= 0) it else fallbackSubId }
+        val subId = parseSubId(arguments)
 
         return when (operation) {
             OPERATION_LIST -> {
@@ -170,23 +136,13 @@ class BrokerInstrumentation : Instrumentation() {
                 )
                 Bundle().apply {
                     putParcelableArrayList("apns", rows)
-                    putString(
-                        "apn_summary",
-                        apns.joinToString(" | ") {
-                            "#${it.id}:${it.name}(${it.apn})[${it.type}]${if (it.isPreferred) "*" else ""}"
-                        }
-                    )
                 }
             }
             OPERATION_COPY -> {
                 val sourceId = parseLongArg(arguments, "source_apn_id", -1L)
                 val copyName = arguments.getString("copy_name")
-                val copyId = ApnOperations.copyApnWithDun(context, subId, sourceId, copyName)
-                Bundle().apply {
-                    if (copyId != null) {
-                        putLong("copied_apn_id", copyId)
-                    }
-                }
+                ApnOperations.copyApnWithDun(context, subId, sourceId, copyName)
+                Bundle()
             }
             else -> {
                 val apn = arguments.getString("apn") ?: ""
@@ -210,12 +166,17 @@ class BrokerInstrumentation : Instrumentation() {
                     password = arguments.getString("password") ?: ""
                 )
 
-                val savedUri = ApnOperations.createApn(context, content, subId)
-                Bundle().apply {
-                    putString("inserted_uri", savedUri.toString())
-                }
+                ApnOperations.createApn(context, content, subId)
+                Bundle()
             }
         }
+    }
+
+    private fun isTelephonyApnPermissionError(error: SecurityException): Boolean {
+        val msg = error.message.orEmpty()
+        return msg.contains("No permission to access APN", ignoreCase = true) ||
+            msg.contains("No permission to write APN", ignoreCase = true) ||
+            msg.contains("WRITE_APN_SETTINGS", ignoreCase = true)
     }
 
     private fun resolveStopDelegationMethod(): Method {

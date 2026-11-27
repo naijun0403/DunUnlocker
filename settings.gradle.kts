@@ -20,4 +20,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "DunUnlocker"
-include(":app", ":hidden-api-stub")
+include(":app")

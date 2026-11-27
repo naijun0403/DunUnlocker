@@ -21,7 +21,7 @@ fun ExistingApnCard(
     refreshKey: Int,
     selectedId: Long?,
     onSelected: (Long?) -> Unit,
-    loadApns: suspend (Int) -> Result<List<ApnSummary>>,
+    loadApns: suspend (Int, Boolean) -> Result<List<ApnSummary>>,
     onCopy: (ApnSummary) -> Unit,
     onNamedCopy: (ApnSummary) -> Unit,
     modifier: Modifier = Modifier
@@ -30,6 +30,7 @@ fun ExistingApnCard(
         mutableStateOf(if (subscriptionId == null) ApnListState.NoSim else ApnListState.Loading)
     }
     var refresh by remember { mutableIntStateOf(0) }
+    var lastRefresh by remember { mutableIntStateOf(0) }
     var showPicker by remember(subscriptionId) { mutableStateOf(false) }
     val currentSelection by rememberUpdatedState(selectedId)
     val onSelectionChange by rememberUpdatedState(onSelected)
@@ -42,8 +43,10 @@ fun ExistingApnCard(
             onSelectionChange(null)
             return@LaunchedEffect
         }
+        val forceRefresh = refresh != lastRefresh
+        lastRefresh = refresh
         state = ApnListState.Loading
-        state = load(subscriptionId).fold(
+        state = load(subscriptionId, forceRefresh).fold(
             onSuccess = { rows ->
                 if (rows.none { it.id == currentSelection }) {
                     onSelectionChange(rows.firstOrNull { it.isPreferred }?.id)

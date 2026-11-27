@@ -38,15 +38,24 @@ import kotlin.time.Duration.Companion.seconds
 class ApnManager(
     private val context: Context
 ) {
+    private class ApnPermissionDeniedException(message: String) : IllegalStateException(message)
+
+    private data class CachedApns(
+        val version: Int,
+        val apns: List<ApnSummary>
+    )
+
     companion object {
         private const val TAG = "ApnManager"
         private const val INSTR_FLAG_NO_RESTART = 8
         private val brokerMutex = Mutex()
         internal const val BROKER_REQUEST_ID = "broker_request_id"
         internal const val BROKER_LOCAL_RESULT = "broker_local_result"
+        internal const val BROKER_APN_PERMISSION_DENIED = "broker_apn_permission_denied"
         private val pendingBrokerResult = AtomicReference<PendingBrokerRequest?>()
         private val _apnChanges = MutableStateFlow(0)
         val apnChanges = _apnChanges.asStateFlow()
+        private val carrierPrivilegeApnCache = mutableMapOf<Int, CachedApns>()
 
         internal fun hasLocalBrokerRequest(requestId: String?): Boolean =
             requestId != null && pendingBrokerResult.get()?.id == requestId
@@ -60,7 +69,12 @@ class ApnManager(
                 pending.completion.complete(results ?: Bundle())
             } else {
                 val message = results?.getString("error") ?: "APN broker failed with code $resultCode"
-                pending.completion.completeExceptionally(IllegalStateException(message))
+                val exception = if (results?.getBoolean(BROKER_APN_PERMISSION_DENIED) == true) {
+                    ApnPermissionDeniedException(message)
+                } else {
+                    IllegalStateException(message)
+                }
+                pending.completion.completeExceptionally(exception)
             }
         }
     }
@@ -82,19 +96,36 @@ class ApnManager(
             return ISub.Stub.asInterface(ShizukuBinderWrapper(subscriptionService))
         }
 
+    private fun fetchActiveSubscriptions(): List<SubscriptionInfo> =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            sub.getActiveSubscriptionInfoList(null, null, true)
+        } else {
+            ISub::class.java.getMethod(
+                "getActiveSubscriptionInfoList",
+                String::class.java,
+                String::class.java,
+            ).invoke(sub, null, null)
+                ?.let { it as? List<*> }
+                ?.filterIsInstance<SubscriptionInfo>()
+        }.orEmpty()
+
     suspend fun getActiveSubscriptions(): Result<List<SimInfo>> = withContext(Dispatchers.IO) {
         try {
-            val activeSubscriptions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                sub.getActiveSubscriptionInfoList(null, null, true)
-            } else {
-                ISub::class.java.getMethod(
-                    "getActiveSubscriptionInfoList",
-                    String::class.java,
-                    String::class.java,
-                ).invoke(sub, null, null)
-                    ?.let { it as? List<*> }
-                    ?.filterIsInstance<SubscriptionInfo>()
-            }.orEmpty()
+            val activeSubscriptions = fetchActiveSubscriptions()
+
+            if (usesCarrierPrivilegeMode && activeSubscriptions.isNotEmpty() && brokerMutex.tryLock()) {
+                try {
+                    activeSubscriptions.forEach { info ->
+                        runCatching {
+                            CarrierPrivilegeManager.cleanupStaleOverrideIfNeeded(context, info.subscriptionId)
+                        }.onFailure { error ->
+                            Log.w(TAG, "Failed to clean up stale carrier privilege override for subId=${info.subscriptionId}", error)
+                        }
+                    }
+                } finally {
+                    brokerMutex.unlock()
+                }
+            }
 
             Result.success(activeSubscriptions.map { info ->
                 SimInfo(
@@ -144,14 +175,16 @@ class ApnManager(
                 subscriptionId?.let { putInt("sub_id", it) }
             }
 
-            executeApnOperation(
-                subscriptionId = subscriptionId,
-                changesApns = true,
-                brokerAction = { overrideConfigUsingBrokerLocked(bundle) },
-                directAction = { resolvedSubId ->
-                    ApnOperations.createApn(context, apnContent, subscriptionId ?: resolvedSubId)
-                }
-            )
+            brokerMutex.withLock {
+                executeApnOperationLocked(
+                    subscriptionId = subscriptionId,
+                    changesApns = true,
+                    brokerAction = { overrideConfigUsingBrokerLocked(bundle) },
+                    directAction = { resolvedSubId ->
+                        ApnOperations.createApn(context, apnContent, subscriptionId ?: resolvedSubId)
+                    }
+                )
+            }
 
             Result.success(Unit)
         } catch (e: CancellationException) {
@@ -162,31 +195,43 @@ class ApnManager(
         }
     }
 
-    suspend fun getApns(subscriptionId: Int): Result<List<ApnSummary>> = withContext(Dispatchers.IO) {
+    suspend fun getApns(
+        subscriptionId: Int,
+        forceRefresh: Boolean = false
+    ): Result<List<ApnSummary>> = withContext(Dispatchers.IO) {
         try {
-            val apns = executeApnOperation(
-                subscriptionId = subscriptionId,
-                changesApns = false,
-                brokerAction = {
-                    val result = overrideConfigUsingBrokerLocked(Bundle().apply {
-                        putString("operation", "list_apns")
-                        putInt("sub_id", subscriptionId)
-                    })
-                    val rows = result.getParcelableArrayList("apns", Bundle::class.java).orEmpty()
-                    rows.map { row ->
-                        ApnSummary(
-                            id = row.getLong("id"),
-                            name = row.getString("name").orEmpty(),
-                            apn = row.getString("apn").orEmpty(),
-                            type = row.getString("type").orEmpty(),
-                            isPreferred = row.getBoolean("preferred")
-                        )
+            val apns = brokerMutex.withLock {
+                if (!forceRefresh) {
+                    getCachedCarrierPrivilegeApnsLocked(subscriptionId)?.let { cached ->
+                        return@withLock cached
                     }
-                },
-                directAction = { resolvedSubId ->
-                    ApnOperations.listApns(context, resolvedSubId)
                 }
-            )
+                executeApnOperationLocked(
+                    subscriptionId = subscriptionId,
+                    changesApns = false,
+                    brokerAction = {
+                        val result = overrideConfigUsingBrokerLocked(Bundle().apply {
+                            putString("operation", "list_apns")
+                            putInt("sub_id", subscriptionId)
+                        })
+                        val rows = result.getParcelableArrayList("apns", Bundle::class.java).orEmpty()
+                        rows.map { row ->
+                            ApnSummary(
+                                id = row.getLong("id"),
+                                name = row.getString("name").orEmpty(),
+                                apn = row.getString("apn").orEmpty(),
+                                type = row.getString("type").orEmpty(),
+                                isPreferred = row.getBoolean("preferred")
+                            )
+                        }
+                    },
+                    directAction = { resolvedSubId ->
+                        ApnOperations.listApns(context, resolvedSubId).also { rows ->
+                            carrierPrivilegeApnCache[resolvedSubId] = CachedApns(_apnChanges.value, rows)
+                        }
+                    }
+                )
+            }
             Result.success(apns)
         } catch (e: CancellationException) {
             throw e
@@ -207,21 +252,23 @@ class ApnManager(
         copyName: String?
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            executeApnOperation(
-                subscriptionId = subscriptionId,
-                changesApns = true,
-                brokerAction = {
-                    overrideConfigUsingBrokerLocked(Bundle().apply {
-                        putString("operation", "copy_apn")
-                        putInt("sub_id", subscriptionId)
-                        putLong("source_apn_id", sourceApnId)
-                        copyName?.let { putString("copy_name", it) }
-                    })
-                },
-                directAction = { resolvedSubId ->
-                    ApnOperations.copyApnWithDun(context, resolvedSubId, sourceApnId, copyName)
-                }
-            )
+            brokerMutex.withLock {
+                executeApnOperationLocked(
+                    subscriptionId = subscriptionId,
+                    changesApns = true,
+                    brokerAction = {
+                        overrideConfigUsingBrokerLocked(Bundle().apply {
+                            putString("operation", "copy_apn")
+                            putInt("sub_id", subscriptionId)
+                            putLong("source_apn_id", sourceApnId)
+                            copyName?.let { putString("copy_name", it) }
+                        })
+                    },
+                    directAction = { resolvedSubId ->
+                        ApnOperations.copyApnWithDun(context, resolvedSubId, sourceApnId, copyName)
+                    }
+                )
+            }
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
@@ -231,61 +278,68 @@ class ApnManager(
         }
     }
 
-    private suspend fun <T> executeApnOperation(
+    private fun getCachedCarrierPrivilegeApnsLocked(subscriptionId: Int): List<ApnSummary>? {
+        val cached = carrierPrivilegeApnCache[subscriptionId] ?: return null
+        return if (cached.version == _apnChanges.value) cached.apns else null
+    }
+
+    private suspend fun <T> executeApnOperationLocked(
         subscriptionId: Int?,
         changesApns: Boolean,
         brokerAction: suspend () -> T,
         directAction: (Int) -> T
-    ): T = brokerMutex.withLock {
-        withContext(NonCancellable) {
-            if (!CarrierPrivilegeManager.hasShellWriteApnPermission(context)) {
-                return@withContext runDirectWithCarrierPrivileges(subscriptionId, changesApns, directAction)
-            }
+    ): T = withContext(NonCancellable) {
+        if (!CarrierPrivilegeManager.hasShellWriteApnPermission(context)) {
+            return@withContext runDirectWithCarrierPrivilegesLocked(subscriptionId, changesApns, directAction)
+        }
 
-            try {
-                brokerAction()
-            } catch (e: Exception) {
-                if (isApnPermissionError(e)) {
-                    Log.w(TAG, "Shell APN delegation denied; falling back to carrier privilege method", e)
-                    runDirectWithCarrierPrivileges(subscriptionId, changesApns, directAction)
-                } else {
-                    throw e
-                }
-            }
+        try {
+            brokerAction()
+        } catch (e: ApnPermissionDeniedException) {
+            Log.w(TAG, "Shell APN delegation denied by TelephonyProvider; falling back to carrier privilege method", e)
+            runDirectWithCarrierPrivilegesLocked(subscriptionId, changesApns, directAction)
         }
     }
 
-    private suspend fun <T> runDirectWithCarrierPrivileges(
+    private suspend fun <T> runDirectWithCarrierPrivilegesLocked(
         subscriptionId: Int?,
         changesApns: Boolean,
         directAction: (Int) -> T
     ): T {
         val resolvedSubId = resolveSubscriptionId(subscriptionId)
+        var refreshedApns: List<ApnSummary>? = null
         val result = CarrierPrivilegeManager.withCarrierPrivileges(context, resolvedSubId) {
-            directAction(resolvedSubId)
+            val output = directAction(resolvedSubId)
+            if (changesApns) {
+                // Prefetch the updated APN list within the same carrier privilege session so the
+                // UI refresh triggered by apnChanges does not require a second override cycle.
+                refreshedApns = runCatching {
+                    ApnOperations.listApns(context, resolvedSubId)
+                }.onFailure { error ->
+                    Log.w(TAG, "Failed to prefetch APN list after mutation", error)
+                }.getOrNull()
+            }
+            output
         }
         if (changesApns) {
-            _apnChanges.update { it + 1 }
+            val nextVersion = _apnChanges.value + 1
+            carrierPrivilegeApnCache.clear()
+            refreshedApns?.let { apns ->
+                carrierPrivilegeApnCache[resolvedSubId] = CachedApns(nextVersion, apns)
+            }
+            _apnChanges.value = nextVersion
         }
         return result
     }
 
-    private suspend fun resolveSubscriptionId(subscriptionId: Int?): Int {
+    private fun resolveSubscriptionId(subscriptionId: Int?): Int {
         if (subscriptionId != null && subscriptionId >= 0) return subscriptionId
         val defaultDataSubId = SubscriptionManager.getDefaultDataSubscriptionId()
         if (SubscriptionManager.isValidSubscriptionId(defaultDataSubId)) {
             return defaultDataSubId
         }
-        return getActiveSubscriptions().getOrNull()?.firstOrNull()?.subscriptionId
+        return runCatching { fetchActiveSubscriptions().firstOrNull()?.subscriptionId }.getOrNull()
             ?: error(context.getString(R.string.carrier_privilege_no_sub))
-    }
-
-    private fun isApnPermissionError(error: Throwable): Boolean {
-        if (error is SecurityException) return true
-        val msg = error.message.orEmpty()
-        return msg.contains("No permission to access APN", ignoreCase = true) ||
-            msg.contains("No permission to write APN", ignoreCase = true) ||
-            msg.contains("WRITE_APN_SETTINGS", ignoreCase = true)
     }
 
     private suspend fun overrideConfigUsingBrokerLocked(bundle: Bundle): Bundle {
