@@ -26,6 +26,9 @@
     <!-- Shizuku Status Card -->
     <string name="shizuku_status_title">Connect to Shizuku</string>
     <string name="shizuku_granted_message">Shizuku connected</string>
+    <string name="shizuku_granted_carrier_config_message">Shizuku connected · Carrier Config mode</string>
+    <string name="carrier_privilege_timeout">Timed out waiting for temporary carrier privileges. Check Shizuku and try again.</string>
+    <string name="carrier_privilege_no_sub">An active SIM subscription is required for Carrier Config mode.</string>
     <string name="shizuku_running_message">Allow Shizuku access to read and change APN settings.</string>
     <string name="shizuku_not_running_message">Start Shizuku, then return to this screen.</string>
     <string name="shizuku_permission_denied">Shizuku permission denied.</string>

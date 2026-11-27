@@ -36,7 +36,7 @@ private enum class ConfigurationMode(@param:StringRes val label: Int) {
 fun ApnConfigSection(
     subscriptionId: Int?,
     refreshKey: Int,
-    loadApns: suspend (Int) -> Result<List<ApnSummary>>,
+    loadApns: suspend (Int, Boolean) -> Result<List<ApnSummary>>,
     onCopyApnClicked: (ApnSummary) -> Unit,
     onNamedCopyApnClicked: (ApnSummary) -> Unit,
     onApplyClicked: (ApnFormState) -> Unit,

@@ -1,7 +1,7 @@
 [versions]
 compileSdk = "37"
 compileSdkMinor = "2"
-minSdk = "34"
+minSdk = "33"
 targetSdk = "37"
 versionCode = "17"
 versionName = "1.4.1"
