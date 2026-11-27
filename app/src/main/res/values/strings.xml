@@ -4,7 +4,6 @@
     <!-- Top Bar -->
     <string name="top_bar_title">DunUnlocker</string>
     <string name="menu_app_info">App Info</string>
-    <string name="menu_more_options">More options</string>
 
     <!-- App Info Dialog -->
     <string name="app_info_title">App Information</string>
@@ -26,7 +25,7 @@
     <!-- Shizuku Status Card -->
     <string name="shizuku_status_title">Connect to Shizuku</string>
     <string name="shizuku_granted_message">Shizuku connected</string>
-    <string name="shizuku_granted_carrier_config_message">Shizuku connected · Carrier Config mode</string>
+    <string name="carrier_config_mode_label">Carrier Config mode</string>
     <string name="carrier_privilege_timeout">Timed out waiting for temporary carrier privileges. Check Shizuku and try again.</string>
     <string name="carrier_privilege_no_sub">An active SIM subscription is required for Carrier Config mode.</string>
     <string name="shizuku_running_message">Allow Shizuku access to read and change APN settings.</string>
@@ -60,7 +59,6 @@
     <string name="apn_copy_description">Copy the existing settings and add DUN. Your device may merge the copy into the original APN.</string>
     <string name="apn_source_choose">Choose an APN</string>
     <string name="apn_source_choose_count">%d APNs · Change</string>
-    <string name="apn_source_types">Types · %s</string>
     <string name="apn_current_default">Default APN</string>
     <string name="apn_list_refresh">Refresh APN list</string>
     <string name="apn_list_loading">Loading APNs…</string>
@@ -78,7 +76,6 @@
 
     <!-- APN Configuration -->
     <string name="apn_settings_title">Tethering APN</string>
-    <string name="carrier_selection">Carrier preset</string>
     <string name="carrier_label">Preset</string>
     <string name="carrier_skt_5g">SKT (5G)</string>
     <string name="carrier_skt_lte">SKT (LTE)</string>

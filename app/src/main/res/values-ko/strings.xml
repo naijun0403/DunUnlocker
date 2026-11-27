@@ -4,7 +4,6 @@
     <!-- Top Bar -->
     <string name="top_bar_title">DunUnlocker</string>
     <string name="menu_app_info">앱 정보</string>
-    <string name="menu_more_options">더보기</string>
 
     <!-- App Info Dialog -->
     <string name="app_info_title">앱 정보</string>
@@ -25,7 +24,7 @@
     <!-- Shizuku Status Card -->
     <string name="shizuku_status_title">Shizuku 연결</string>
     <string name="shizuku_granted_message">Shizuku 연결됨</string>
-    <string name="shizuku_granted_carrier_config_message">Shizuku 연결됨 · Carrier Config 모드</string>
+    <string name="carrier_config_mode_label">Carrier Config 모드</string>
     <string name="carrier_privilege_timeout">임시 통신사 권한(Carrier Privileges)을 획득하지 못했습니다. Shizuku 상태를 확인하고 다시 시도해주세요.</string>
     <string name="carrier_privilege_no_sub">Carrier Config 모드를 사용하려면 활성화된 SIM이 필요합니다.</string>
     <string name="shizuku_running_message">APN 설정을 읽고 변경하려면 Shizuku 접근을 허용하세요.</string>
@@ -59,7 +58,6 @@
     <string name="apn_copy_description">기존 설정을 복사해 DUN 타입을 추가합니다. 기기에 따라 원래 APN에 병합될 수 있습니다.</string>
     <string name="apn_source_choose">APN 선택</string>
     <string name="apn_source_choose_count">APN %d개 · 변경</string>
-    <string name="apn_source_types">타입 · %s</string>
     <string name="apn_current_default">기본 APN</string>
     <string name="apn_list_refresh">APN 목록 새로고침</string>
     <string name="apn_list_loading">APN 목록을 불러오는 중…</string>
@@ -77,7 +75,6 @@
 
     <!-- APN Configuration -->
     <string name="apn_settings_title">테더링 APN</string>
-    <string name="carrier_selection">통신사 프리셋</string>
     <string name="carrier_label">프리셋</string>
     <string name="carrier_skt_5g">SKT (5G)</string>
     <string name="carrier_skt_lte">SKT (LTE)</string>
