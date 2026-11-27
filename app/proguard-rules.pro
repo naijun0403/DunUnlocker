@@ -23,6 +23,18 @@
 -dontwarn org.openjsse.**
 -dontwarn javax.annotation.**
 -dontwarn edu.umd.cs.findbugs.annotations.**
+-dontwarn android.app.IActivityManager
+-dontwarn android.app.IActivityManager$Stub
+-dontwarn android.app.IInstrumentationWatcher
+-dontwarn android.app.IInstrumentationWatcher$Stub
+-dontwarn android.app.IUiAutomationConnection
+-dontwarn android.app.UiAutomationConnection
+-dontwarn android.os.TelephonyServiceManager
+-dontwarn android.os.TelephonyServiceManager$ServiceRegisterer
+-dontwarn android.telephony.TelephonyFrameworkInitializer
+-dontwarn com.android.internal.telephony.**
+
+-keep class dev.naijun.dununlocker.BrokerInstrumentation { *; }
 
 -assumenosideeffects class android.util.Log {
     public static *** d(...);

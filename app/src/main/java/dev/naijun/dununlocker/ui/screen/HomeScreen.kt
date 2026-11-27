@@ -131,6 +131,7 @@ fun HomeScreen() {
                 ShizukuStatusCard(
                     isGranted = shizukuGranted,
                     isRunning = shizukuRunning,
+                    usesCarrierPrivilegeMode = apnManager.usesCarrierPrivilegeMode,
                     onRequestPermission = {
                         ShizukuManager.requestPermission()
                     }

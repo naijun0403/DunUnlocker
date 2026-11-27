@@ -1,7 +1,7 @@
 [versions]
 compileSdk = "37"
 compileSdkMinor = "2"
-minSdk = "34"
+minSdk = "33"
 targetSdk = "37"
 versionCode = "17"
 versionName = "1.4.1"
@@ -41,6 +41,7 @@ hiddenapibypass = { group = "org.lsposed.hiddenapibypass", name = "hiddenapibypa
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 lsparanoid = { id = "org.lsposed.lsparanoid", version.ref = "lsparanoid" }

@@ -17,6 +17,7 @@ import dev.naijun.dununlocker.R
 fun ShizukuStatusCard(
     isGranted: Boolean,
     isRunning: Boolean,
+    usesCarrierPrivilegeMode: Boolean = false,
     onRequestPermission: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -29,9 +30,14 @@ fun ShizukuStatusCard(
         ) {
             Icon(Icons.Outlined.CheckCircle, null, Modifier.size(18.dp),
                 tint = MaterialTheme.colorScheme.primary)
-            Text(stringResource(R.string.shizuku_granted_message),
+            Text(
+                stringResource(
+                    if (usesCarrierPrivilegeMode) R.string.shizuku_granted_carrier_config_message
+                    else R.string.shizuku_granted_message
+                ),
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     } else {
         Surface(

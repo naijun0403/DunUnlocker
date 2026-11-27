@@ -25,6 +25,9 @@
     <!-- Shizuku Status Card -->
     <string name="shizuku_status_title">Shizuku 연결</string>
     <string name="shizuku_granted_message">Shizuku 연결됨</string>
+    <string name="shizuku_granted_carrier_config_message">Shizuku 연결됨 · Carrier Config 모드</string>
+    <string name="carrier_privilege_timeout">임시 통신사 권한(Carrier Privileges)을 획득하지 못했습니다. Shizuku 상태를 확인하고 다시 시도해주세요.</string>
+    <string name="carrier_privilege_no_sub">Carrier Config 모드를 사용하려면 활성화된 SIM이 필요합니다.</string>
     <string name="shizuku_running_message">APN 설정을 읽고 변경하려면 Shizuku 접근을 허용하세요.</string>
     <string name="shizuku_not_running_message">Shizuku를 시작한 뒤 이 화면으로 돌아오세요.</string>
     <string name="shizuku_permission_denied">Shizuku 권한이 거부되었습니다.</string>
