@@ -12,6 +12,7 @@ import dev.naijun.dununlocker.R
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.lsposed.lsparanoid.Obfuscate
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
@@ -144,8 +145,12 @@ internal object CarrierPrivilegeManager {
         subId: Int
     ): List<String> {
         val bundle = loader.getConfigForSubIdWithFeature(subId, SHELL_PACKAGE, null)
+        // CarrierConfigLoader returns an empty bundle when the caller fails its phone state check.
+        // Reading that as "no certificates" would make the restore step pin an empty list over the
+        // carrier's own rules until reboot, so stop before touching the override instead.
+        check(bundle != null && !bundle.isEmpty()) { "Could not read the current carrier config" }
         return bundle
-            ?.getStringArray(CarrierConfigManager.KEY_CARRIER_CERTIFICATE_STRING_ARRAY)
+            .getStringArray(CarrierConfigManager.KEY_CARRIER_CERTIFICATE_STRING_ARRAY)
             ?.toList()
             .orEmpty()
     }
@@ -166,14 +171,13 @@ internal object CarrierPrivilegeManager {
         }
     }
 
-    private suspend fun waitForCarrierPrivileges(telephonyManager: TelephonyManager): Boolean {
-        val deadline = System.currentTimeMillis() + PRIVILEGE_WAIT_TIMEOUT_MS
-        while (System.currentTimeMillis() < deadline) {
-            if (telephonyManager.hasCarrierPrivileges()) {
-                return true
+    // withTimeoutOrNull uses a monotonic clock, unlike System.currentTimeMillis(), so a network
+    // time update while waiting cannot shorten or extend the timeout.
+    private suspend fun waitForCarrierPrivileges(telephonyManager: TelephonyManager): Boolean =
+        withTimeoutOrNull(PRIVILEGE_WAIT_TIMEOUT_MS) {
+            while (!telephonyManager.hasCarrierPrivileges()) {
+                delay(PRIVILEGE_POLL_INTERVAL_MS)
             }
-            delay(PRIVILEGE_POLL_INTERVAL_MS)
-        }
-        return telephonyManager.hasCarrierPrivileges()
-    }
+            true
+        } ?: telephonyManager.hasCarrierPrivileges()
 }

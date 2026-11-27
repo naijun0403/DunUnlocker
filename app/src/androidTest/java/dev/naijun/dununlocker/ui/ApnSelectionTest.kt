@@ -31,10 +31,12 @@ class ApnSelectionTest {
 
     @Test fun failedReadDisablesCopyAndRetryLoadsList() {
         var reads = 0
+        val forcedReads = mutableListOf<Boolean>()
         compose.setContent {
             var selectedId by remember { mutableStateOf<Long?>(null) }
             MaterialTheme {
-                ExistingApnCard(1, 0, selectedId, { selectedId = it }, {
+                ExistingApnCard(1, 0, selectedId, { selectedId = it }, { _, forceRefresh ->
+                    forcedReads += forceRefresh
                     if (reads++ == 0) Result.failure(IllegalStateException("test failure"))
                     else Result.success(rows)
                 }, {}, onNamedCopy = {})
@@ -44,6 +46,8 @@ class ApnSelectionTest {
         compose.onNodeWithText(text(R.string.apn_list_retry)).performClick()
         compose.onNodeWithText("Internet").assertIsDisplayed()
         compose.onNodeWithText(text(R.string.copy_apn_button)).assertIsEnabled()
+        // Only an explicit retry may bypass the carrier-privilege APN cache.
+        compose.runOnIdle { assertEquals(listOf(false, true), forcedReads) }
     }
 
     @Test fun simChangeDiscardsAnUnfinishedReadAndOldSelection() {
@@ -52,8 +56,8 @@ class ApnSelectionTest {
         compose.setContent {
             var selectedId by remember(sim.intValue) { mutableStateOf<Long?>(null) }
             MaterialTheme {
-                ExistingApnCard(sim.intValue, 0, selectedId, { selectedId = it }, {
-                    if (it == 1) firstRead.await()
+                ExistingApnCard(sim.intValue, 0, selectedId, { selectedId = it }, { subId, _ ->
+                    if (subId == 1) firstRead.await()
                     else Result.success(listOf(other))
                 }, {}, onNamedCopy = {})
             }
@@ -78,7 +82,7 @@ class ApnSelectionTest {
                     ApnConfigSection(
                         subscriptionId = 1,
                         refreshKey = 0,
-                        loadApns = { Result.success(rows) },
+                        loadApns = { _, _ -> Result.success(rows) },
                         onCopyApnClicked = {},
                         onNamedCopyApnClicked = {},
                         onApplyClicked = { form ->
@@ -114,7 +118,7 @@ class ApnSelectionTest {
             MaterialTheme {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     ExistingApnCard(1, 0, selectedId, { selectedId = it },
-                        { Result.success(rows) }, {},
+                        { _, _ -> Result.success(rows) }, {},
                         onNamedCopy = { copySource = it })
                 }
                 copySource?.let { source ->
@@ -150,7 +154,7 @@ class ApnSelectionTest {
                     ApnConfigSection(
                         subscriptionId = 1,
                         refreshKey = 0,
-                        loadApns = { Result.success(rows) },
+                        loadApns = { _, _ -> Result.success(rows) },
                         onCopyApnClicked = {},
                         onNamedCopyApnClicked = {},
                         onApplyClicked = { applied = it }

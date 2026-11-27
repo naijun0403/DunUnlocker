@@ -1,5 +1,6 @@
 package dev.naijun.dununlocker.data
 
+import android.app.ActivityManager
 import android.app.IActivityManager
 import android.app.IInstrumentationWatcher
 import android.app.UiAutomationConnection
@@ -23,6 +24,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -47,7 +49,6 @@ class ApnManager(
 
     companion object {
         private const val TAG = "ApnManager"
-        private const val INSTR_FLAG_NO_RESTART = 8
         private val brokerMutex = Mutex()
         internal const val BROKER_REQUEST_ID = "broker_request_id"
         internal const val BROKER_LOCAL_RESULT = "broker_local_result"
@@ -84,8 +85,11 @@ class ApnManager(
         val completion = CompletableDeferred<Bundle>()
     }
 
-    val usesCarrierPrivilegeMode: Boolean
-        get() = !CarrierPrivilegeManager.hasShellWriteApnPermission(context)
+    // The shell's granted permissions only change with a system update, so check once instead of
+    // making a PackageManager IPC on every recomposition and APN operation.
+    val usesCarrierPrivilegeMode: Boolean by lazy {
+        !CarrierPrivilegeManager.hasShellWriteApnPermission(context)
+    }
 
     private val sub: ISub
         get() {
@@ -289,7 +293,7 @@ class ApnManager(
         brokerAction: suspend () -> T,
         directAction: (Int) -> T
     ): T = withContext(NonCancellable) {
-        if (!CarrierPrivilegeManager.hasShellWriteApnPermission(context)) {
+        if (usesCarrierPrivilegeMode) {
             return@withContext runDirectWithCarrierPrivilegesLocked(subscriptionId, changesApns, directAction)
         }
 
@@ -307,29 +311,42 @@ class ApnManager(
         directAction: (Int) -> T
     ): T {
         val resolvedSubId = resolveSubscriptionId(subscriptionId)
+        var mutationStarted = false
         var refreshedApns: List<ApnSummary>? = null
-        val result = CarrierPrivilegeManager.withCarrierPrivileges(context, resolvedSubId) {
-            val output = directAction(resolvedSubId)
-            if (changesApns) {
-                // Prefetch the updated APN list within the same carrier privilege session so the
-                // UI refresh triggered by apnChanges does not require a second override cycle.
-                refreshedApns = runCatching {
-                    ApnOperations.listApns(context, resolvedSubId)
-                }.onFailure { error ->
-                    Log.w(TAG, "Failed to prefetch APN list after mutation", error)
-                }.getOrNull()
+        try {
+            return CarrierPrivilegeManager.withCarrierPrivileges(context, resolvedSubId) {
+                mutationStarted = changesApns
+                try {
+                    directAction(resolvedSubId)
+                } finally {
+                    if (changesApns) {
+                        // Prefetch within the same carrier privilege session so the refresh
+                        // triggered by apnChanges does not need a second override cycle. This
+                        // also runs after a failed write, which may have changed the provider.
+                        refreshedApns = runCatching {
+                            ApnOperations.listApns(context, resolvedSubId)
+                        }.onFailure { error ->
+                            Log.w(TAG, "Failed to prefetch APN list after mutation", error)
+                        }.getOrNull()
+                    }
+                }
             }
-            output
-        }
-        if (changesApns) {
-            val nextVersion = _apnChanges.value + 1
-            carrierPrivilegeApnCache.clear()
-            refreshedApns?.let { apns ->
-                carrierPrivilegeApnCache[resolvedSubId] = CachedApns(nextVersion, apns)
+        } finally {
+            // Like the broker path, publish a change whenever a write was attempted, not only
+            // when it succeeded, so the UI and cache never keep a pre-write APN list.
+            if (mutationStarted) {
+                publishCarrierPrivilegeApnChangeLocked(resolvedSubId, refreshedApns)
             }
-            _apnChanges.value = nextVersion
         }
-        return result
+    }
+
+    private fun publishCarrierPrivilegeApnChangeLocked(subId: Int, refreshedApns: List<ApnSummary>?) {
+        // Callers hold brokerMutex, so getApns() cannot read the cache before it is updated.
+        val version = _apnChanges.updateAndGet { it + 1 }
+        carrierPrivilegeApnCache.clear()
+        refreshedApns?.let { apns ->
+            carrierPrivilegeApnCache[subId] = CachedApns(version, apns)
+        }
     }
 
     private fun resolveSubscriptionId(subscriptionId: Int?): Int {
@@ -375,7 +392,7 @@ class ApnManager(
             check(am.startInstrumentation(
                 ComponentName(context, BrokerInstrumentation::class.java),
                 null,
-                INSTR_FLAG_NO_RESTART,
+                ActivityManager.INSTR_FLAG_NO_RESTART,
                 bundle,
                 watcher,
                 UiAutomationConnection(),

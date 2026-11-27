@@ -18,7 +18,6 @@ import java.lang.reflect.Method
 
 const val UNLOCKER_TAG = "BrokerInstrumentation"
 
-private const val PERMISSION_READ_PRIVILEGED_PHONE_STATE = "android.permission.READ_PRIVILEGED_PHONE_STATE"
 private const val OPERATION_KEY = "operation"
 private const val OPERATION_CREATE = "create"
 private const val OPERATION_COPY = "copy_apn"
@@ -86,7 +85,7 @@ class BrokerInstrumentation : Instrumentation() {
                 uid,
                 arrayOf(
                     Manifest.permission.WRITE_APN_SETTINGS,
-                    PERMISSION_READ_PRIVILEGED_PHONE_STATE
+                    Manifest.permission.READ_PRIVILEGED_PHONE_STATE
                 )
             )
             stopDelegation = stopMethod
@@ -118,7 +117,7 @@ class BrokerInstrumentation : Instrumentation() {
 
     private fun runApnOperation(arguments: Bundle): Bundle {
         val operation = arguments.getString(OPERATION_KEY) ?: OPERATION_CREATE
-        val subId = parseSubId(arguments)
+        val subId = arguments.getInt("sub_id", -1)
 
         return when (operation) {
             OPERATION_LIST -> {
@@ -139,7 +138,7 @@ class BrokerInstrumentation : Instrumentation() {
                 }
             }
             OPERATION_COPY -> {
-                val sourceId = parseLongArg(arguments, "source_apn_id", -1L)
+                val sourceId = arguments.getLong("source_apn_id", -1L)
                 val copyName = arguments.getString("copy_name")
                 ApnOperations.copyApnWithDun(context, subId, sourceId, copyName)
                 Bundle()
@@ -187,21 +186,5 @@ class BrokerInstrumentation : Instrumentation() {
         } catch (_: NoSuchMethodException) {
             manager.getMethod(name)
         }
-    }
-
-    private fun parseSubId(arguments: Bundle): Int {
-        val rawString = arguments.getString("sub_id")
-        if (rawString != null) {
-            return rawString.toIntOrNull() ?: -1
-        }
-        return arguments.getInt("sub_id", -1)
-    }
-
-    private fun parseLongArg(arguments: Bundle, key: String, defaultValue: Long): Long {
-        val rawString = arguments.getString(key)
-        if (rawString != null) {
-            return rawString.toLongOrNull() ?: defaultValue
-        }
-        return arguments.getLong(key, defaultValue)
     }
 }
